@@ -3,6 +3,7 @@
 
 enum CommandType
 {
+    CMD_SET_EXTENDED,
     CMD_NONE,
     CMD_START,
     CMD_STOP,
@@ -10,7 +11,8 @@ enum CommandType
     CMD_SET_BAUD,
     CMD_SET_FPS,
     CMD_SET_LISTEN,
-    CMD_STATUS
+    CMD_STATUS,
+    CMD_HELP
 };
 
 struct Command

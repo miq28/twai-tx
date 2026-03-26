@@ -1,6 +1,13 @@
 #pragma once
 #include <stdint.h>
 
+struct CANFrameConfig
+{
+    bool extended;   // false = standard, true = extended
+};
+
+extern CANFrameConfig canFrameCfg;
+
 enum Mode
 {
     MODE_GENERATOR,  // previous MODE_MAX

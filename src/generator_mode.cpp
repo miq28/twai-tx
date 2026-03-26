@@ -42,11 +42,27 @@ void generatorLoop()
     }
 
     twai_message_t msg;
-    msg.extd = 0;
+    msg.extd = canFrameCfg.extended ? 1 : 0;
     msg.rtr = 0;
     msg.data_length_code = 8;
 
-    uint8_t id = (appState.locked_id >= 0) ? appState.locked_id : current_id;
+    uint32_t id;
+
+    if (appState.locked_id >= 0)
+    {
+        id = appState.locked_id;
+    }
+    else
+    {
+        id = current_id;
+    }
+
+    // Extend ID range when in extended mode
+    if (canFrameCfg.extended)
+    {
+        id |= 0x100; // simple expansion (keeps pattern but avoids tiny IDs)
+    }
+
     msg.identifier = id;
 
     msg.data[0] = (counter >> 0) & 0xFF;

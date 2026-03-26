@@ -43,6 +43,35 @@ void handleCommand(const Command &cmd)
                       appState.target_fps);
         break;
 
+    case CMD_SET_EXTENDED:
+        canFrameCfg.extended = (cmd.value_int == 1);
+
+        Serial.printf("[CAN] Frame mode: %s\n",
+                      canFrameCfg.extended ? "EXTENDED (29-bit)" : "STANDARD (11-bit)");
+        break;
+
+    case CMD_HELP:
+    {
+        Serial.println("\n=== COMMANDS ===");
+
+        Serial.println("start / stop");
+        Serial.println("mode generator | mode ecu | mode slow");
+
+        Serial.println("fps <num>       (e.g. fps 1000)");
+        Serial.println("delay <us>      (e.g. delay 100)");
+        Serial.println("id <n>          (0-9, -1 = auto)");
+
+        Serial.println("baud <num>      (e.g. baud 500000)");
+        Serial.println("listen 0|1");
+
+        Serial.println("ext 0|1         (standard / extended)");
+
+        Serial.println("status");
+
+        Serial.println("=================\n");
+    }
+    break;
+
     default:
         break;
     }

@@ -5,6 +5,8 @@ AppState appState;
 
 CANState canState;
 
+CANFrameConfig canFrameCfg;
+
 void initAppState()
 {
     appState.running = true;
@@ -15,4 +17,6 @@ void initAppState()
 
     canState.baud = 500000;
     canState.listenOnly = false;
+
+    canFrameCfg.extended = false; // default = standard
 }

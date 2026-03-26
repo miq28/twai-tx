@@ -8,9 +8,10 @@
 void transportSerialInit()
 {
     Serial.begin(1000000);
-    delay(100); // allow USB stabilize
-}
+    delay(100);
 
+    Serial.println("Type 'help' for commands");
+}
 void transportSerialProcess()
 {
     static char buf[64];
@@ -26,7 +27,13 @@ void transportSerialProcess()
 
             Command cmd;
             if (parseCommand(buf, cmd))
+            {
                 handleCommand(cmd);
+            }
+            else
+            {
+                Serial.println("Unknown command. Type 'help'");
+            }
 
             idx = 0;
         }
