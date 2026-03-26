@@ -76,5 +76,12 @@ bool parseCommand(char *buf, Command &cmd)
         return true;
     }
 
+    // ===== detect command in JSON =====
+    if (buf[0] == '{')
+    {
+        // parse JSON command
+        // return parseJsonCommand(buf, cmd);
+    }
+
     return false;
 }

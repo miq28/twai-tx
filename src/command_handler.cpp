@@ -2,6 +2,10 @@
 #include "command.h"
 #include "app_mode.h"
 #include "can_driver.h"
+#include "command_registry.h"
+
+extern CommandInfo commandTable[];
+extern const int commandCount;
 
 void handleCommand(const Command &cmd)
 {
@@ -54,19 +58,13 @@ void handleCommand(const Command &cmd)
     {
         Serial.println("\n=== COMMANDS ===");
 
-        Serial.println("start / stop");
-        Serial.println("mode generator | mode ecu | mode slow");
-
-        Serial.println("fps <num>       (e.g. fps 1000)");
-        Serial.println("delay <us>      (e.g. delay 100)");
-        Serial.println("id <n>          (0-9, -1 = auto)");
-
-        Serial.println("baud <num>      (e.g. baud 500000)");
-        Serial.println("listen 0|1");
-
-        Serial.println("ext 0|1         (standard / extended)");
-
-        Serial.println("status");
+        for (int i = 0; i < commandCount; i++)
+        {
+            Serial.printf("%-15s (%s) : %s\n",
+                          commandTable[i].name,
+                          commandTable[i].alias,
+                          commandTable[i].help);
+        }
 
         Serial.println("=================\n");
     }
