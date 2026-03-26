@@ -3,15 +3,18 @@
 
 enum CommandType
 {
-    CMD_SET_EXTENDED,
     CMD_NONE,
     CMD_START,
     CMD_STOP,
     CMD_SET_MODE,
     CMD_SET_BAUD,
+    CMD_SET_EXTENDED,
     CMD_SET_FPS,
+    CMD_SET_DELAY,
+    CMD_LOCK_ID,
     CMD_SET_LISTEN,
     CMD_STATUS,
+    CMD_RESET,
     CMD_HELP
 };
 

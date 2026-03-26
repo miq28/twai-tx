@@ -35,6 +35,14 @@ void handleCommand(const Command &cmd)
         appState.target_fps = cmd.value_int;
         break;
 
+    case CMD_SET_DELAY:
+        appState.delay_us = cmd.value_int;
+        break;
+
+    case CMD_LOCK_ID:
+        appState.locked_id = cmd.value_int;
+        break;
+
     case CMD_SET_LISTEN:
         if (CANDriver::reinit(canState.baud, cmd.value_int))
             canState.listenOnly = cmd.value_int;
@@ -49,9 +57,14 @@ void handleCommand(const Command &cmd)
 
     case CMD_SET_EXTENDED:
         canFrameCfg.extended = (cmd.value_int == 1);
+        // if (CANDriver::reinit(canState.baud, cmd.value_int))
+            Serial.printf("[CAN] Frame mode: %s\n",
+                          canFrameCfg.extended ? "EXTENDED (29-bit)" : "STANDARD (11-bit)");
+        break;
 
-        Serial.printf("[CAN] Frame mode: %s\n",
-                      canFrameCfg.extended ? "EXTENDED (29-bit)" : "STANDARD (11-bit)");
+    case CMD_RESET:
+        initAppState();
+        Serial.println("*** STATES RESET - states only ***");
         break;
 
     case CMD_HELP:
@@ -71,6 +84,7 @@ void handleCommand(const Command &cmd)
     break;
 
     default:
+        Serial.println("COMMAND VALID BUT HANDLE NOT AVAILABLE! check source code'");
         break;
     }
 }

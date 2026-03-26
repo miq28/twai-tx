@@ -30,10 +30,10 @@ void transportSerialProcess()
             {
                 handleCommand(cmd);
             }
-            else
-            {
-                Serial.println("Unknown command. Type 'help'");
-            }
+            // else
+            // {
+            //     Serial.println("Unknown command. Type 'help'");
+            // }
 
             idx = 0;
         }

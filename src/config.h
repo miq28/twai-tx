@@ -4,7 +4,7 @@
 #define CAN_TX GPIO_NUM_7
 #define CAN_RX GPIO_NUM_6
 
-#define DEFAULT_FPS 300
+#define DEFAULT_FPS 100
 
 // ===== DEBUG =====
 #define CAN_DEBUG 1
