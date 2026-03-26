@@ -5,7 +5,7 @@
 #include "command_registry.h"
 
 extern CommandInfo commandTable[];
-extern const int commandCount;
+extern int commandCount;
 
 void handleCommand(const Command &cmd)
 {

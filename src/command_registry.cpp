@@ -14,5 +14,5 @@ CommandInfo commandTable[] = {
     {"help", "", "show this help"},
 };
 
-const int commandCount = sizeof(commandTable) / sizeof(CommandInfo);
+int commandCount = sizeof(commandTable) / sizeof(CommandInfo);
 

@@ -7,3 +7,6 @@ struct CommandInfo
     const char *alias;
     const char *help;
 };
+
+extern CommandInfo commandTable[];
+extern int commandCount;   // ✅ remove const here
