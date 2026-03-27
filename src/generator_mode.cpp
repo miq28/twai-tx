@@ -88,7 +88,7 @@ void generatorLoop()
     if (now - last_fps_us >= 1000000ULL)
     {
         last_fps_us = now;
-        Serial.printf("FPS: %lu\n", frame_count);
+        // Serial.printf("FPS: %lu\n", frame_count);
         frame_count = 0;
     }
 }

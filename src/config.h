@@ -1,8 +1,11 @@
 #pragma once
 #include <driver/gpio.h>
 
-#define CAN_TX GPIO_NUM_7
-#define CAN_RX GPIO_NUM_6
+// #define CAN_TX GPIO_NUM_7
+// #define CAN_RX GPIO_NUM_6
+
+#define CAN_TX GPIO_NUM_27
+#define CAN_RX GPIO_NUM_26
 
 #define DEFAULT_FPS 100
 

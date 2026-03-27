@@ -10,4 +10,6 @@ namespace CANDriver
     bool getTiming(uint32_t baud, twai_timing_config_t &t);
     // 🔥 NEW
     bool reinit(uint32_t baud, bool listenOnly);
+
+    extern uint32_t tx_drop;
 }

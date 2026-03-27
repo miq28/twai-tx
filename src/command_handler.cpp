@@ -3,6 +3,7 @@
 #include "app_mode.h"
 #include "can_driver.h"
 #include "command_registry.h"
+#include "can_rx.h"
 
 extern CommandInfo commandTable[];
 extern int commandCount;
@@ -49,17 +50,18 @@ void handleCommand(const Command &cmd)
         break;
 
     case CMD_STATUS:
-        Serial.printf("Mode:%d Baud:%lu FPS:%d\n",
+        Serial.printf("Mode:%d Baud:%lu FPS:%d RX_drop:%lu\n",
                       appState.mode,
                       canState.baud,
-                      appState.target_fps);
+                      appState.target_fps,
+                      canRxGetDropCount());
         break;
 
     case CMD_SET_EXTENDED:
         canFrameCfg.extended = (cmd.value_int == 1);
         // if (CANDriver::reinit(canState.baud, cmd.value_int))
-            Serial.printf("[CAN] Frame mode: %s\n",
-                          canFrameCfg.extended ? "EXTENDED (29-bit)" : "STANDARD (11-bit)");
+        Serial.printf("[CAN] Frame mode: %s\n",
+                      canFrameCfg.extended ? "EXTENDED (29-bit)" : "STANDARD (11-bit)");
         break;
 
     case CMD_RESET:

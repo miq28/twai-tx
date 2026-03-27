@@ -14,7 +14,7 @@ void transportSerialInit()
 }
 void transportSerialProcess()
 {
-    static char buf[64];
+    static char buf[128];
     static uint8_t idx = 0;
 
     while (Serial.available())
