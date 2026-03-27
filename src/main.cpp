@@ -6,18 +6,20 @@
 #include "mode_ecu.h"
 #include "can_rx_task.h"
 #include "analyzer_mode.h"
+#include "gvret_mode.h"
 
 void setup()
 {
-    transportSerialInit(); // ✅ FIX
+    transportSerialInit();
     initAppState();
     CANDriver::init(500000, false);
-    startCanRxTask(); // ← ADD THIS LINE
+    startCanRxTask();
+    analyzerInit();
 }
 
 void loop()
 {
-    transportSerialProcess(); // ✅ FIX
+    transportSerialProcess();
 
     switch (appState.mode)
     {
@@ -30,9 +32,13 @@ void loop()
     case MODE_ECU:
         ecuLoop();
         break;
-        
+
     case MODE_ANALYZER:
         analyzerLoop();
+        break;
+
+    case MODE_SAVVYCAN:
+        gvretLoop();
         break;
     }
 }

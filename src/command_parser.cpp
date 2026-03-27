@@ -87,10 +87,31 @@ bool parseCommand(char *buf, Command &cmd)
         return true;
     }
 
+    if (strcmp(buf, "mode slow") == 0 || strcmp(buf, "m1") == 0)
+    {
+        cmd.type = CMD_SET_MODE;
+        strcpy(cmd.str, "slow");
+        return true;
+    }
+
     if (strcmp(buf, "mode ecu") == 0 || strcmp(buf, "m2") == 0)
     {
         cmd.type = CMD_SET_MODE;
         strcpy(cmd.str, "ecu");
+        return true;
+    }
+
+    if (strcmp(buf, "mode analyzer") == 0 || strcmp(buf, "m3") == 0)
+    {
+        cmd.type = CMD_SET_MODE;
+        strcpy(cmd.str, "analyzer");
+        return true;
+    }
+
+    if (strcmp(buf, "mode savvycan") == 0 || strcmp(buf, "m4") == 0)
+    {
+        cmd.type = CMD_SET_MODE;
+        strcpy(cmd.str, "savvycan");
         return true;
     }
 
@@ -131,11 +152,28 @@ bool parseCommand(char *buf, Command &cmd)
         return true;
     }
 
-    // ===== MODE ANALYZER =====
-    if (strcmp(buf, "mode analyzer") == 0 || strcmp(buf, "m3") == 0)
+    // ===== FORMAT ENCODER =====
+    if (strncmp(buf, "format ", 7) == 0)
     {
-        cmd.type = CMD_SET_MODE;
-        strcpy(cmd.str, "analyzer");
+        cmd.type = CMD_SET_FORMAT;
+        strcpy(cmd.str, buf + 7); // "binary" / "ascii"
+        return true;
+    }
+
+    // filter i123 or filter off
+    if (strncmp(buf, "filter ", 7) == 0)
+    {
+        cmd.type = CMD_SET_FILTER;
+
+        if (strcmp(buf + 7, "off") == 0)
+        {
+            cmd.value_bool = false;
+        }
+        else
+        {
+            cmd.value_bool = true;
+            cmd.value_u32 = strtoul(buf + 7, NULL, 0);
+        }
         return true;
     }
 

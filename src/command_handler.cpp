@@ -3,6 +3,12 @@
 #include "app_mode.h"
 #include "can_driver.h"
 #include "command_registry.h"
+#include "ascii_encoder.h"
+#include "binary_encoder.h"
+#include "analyzer_mode.h"
+
+void analyzerSetEncoder(ICanEncoder *enc);
+void analyzerSetFilter(bool enable, uint32_t id);
 
 extern CommandInfo commandTable[];
 extern int commandCount;
@@ -22,10 +28,14 @@ void handleCommand(const Command &cmd)
     case CMD_SET_MODE:
         if (strcmp(cmd.str, "generator") == 0)
             appState.mode = MODE_GENERATOR;
+        else if (strcmp(cmd.str, "slow") == 0)
+            appState.mode = MODE_SLOW;
         else if (strcmp(cmd.str, "ecu") == 0)
             appState.mode = MODE_ECU;
         else if (strcmp(cmd.str, "analyzer") == 0)
             appState.mode = MODE_ANALYZER;
+        else if (strcmp(cmd.str, "savvycan") == 0)
+            appState.mode = MODE_SAVVYCAN;
         break;
 
     case CMD_SET_BAUD:
@@ -84,6 +94,36 @@ void handleCommand(const Command &cmd)
         Serial.println("=================\n");
     }
     break;
+
+    case CMD_SET_FORMAT:
+        if (strcmp(cmd.str, "binary") == 0)
+        {
+            analyzerSetEncoder(&binaryEncoder);
+            Serial.println("[FMT] binary");
+        }
+        else if (strcmp(cmd.str, "ascii") == 0)
+        {
+            analyzerSetEncoder(&asciiEncoder);
+            Serial.println("[FMT] ascii");
+        }
+        else
+        {
+            Serial.println("[FMT] unknown (use: format binary | format ascii)");
+        }
+        break;
+
+    case CMD_SET_FILTER:
+        if (!cmd.value_bool)
+        {
+            analyzerSetFilter(false, 0);
+            Serial.println("[FILTER] off");
+        }
+        else
+        {
+            analyzerSetFilter(true, cmd.value_u32);
+            Serial.printf("[FILTER] ID:0x%lX\n", cmd.value_u32);
+        }
+        break;
 
     default:
         Serial.println("COMMAND VALID BUT HANDLE NOT AVAILABLE! check source code'");

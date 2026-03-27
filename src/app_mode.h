@@ -10,10 +10,11 @@ extern CANFrameConfig canFrameCfg;
 
 enum Mode
 {
-    MODE_GENERATOR,  // previous MODE_MAX
+    MODE_GENERATOR,
     MODE_SLOW,
-    MODE_ECU,         // new
-    MODE_ANALYZER   // NEW
+    MODE_ECU,
+    MODE_ANALYZER,
+    MODE_SAVVYCAN
 };
 
 struct AppState
@@ -32,7 +33,6 @@ struct CANState
 };
 
 extern CANState canState;
-
 extern AppState appState;
 
 void initAppState();

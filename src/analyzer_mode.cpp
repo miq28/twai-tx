@@ -1,28 +1,44 @@
 #include "analyzer_mode.h"
 #include "can_rx_buffer.h"
-#include "can_packet.h"
-#include <Arduino.h>
-#include <string.h>
+#include "can_encoder.h"
+#include "app_mode.h"
+#include "ascii_encoder.h"   // ✅ allowed (same module group)
+
+static AnalyzerConfig cfg;
+
+void analyzerInit()
+{
+    cfg.encoder = &asciiEncoder;   // ✅ default here
+    cfg.filterEnabled = false;
+    cfg.filterId = 0;
+}
+
+void analyzerSetEncoder(ICanEncoder* enc)
+{
+    cfg.encoder = enc;
+}
+// optional filter (application layer)
+static bool filterEnabled = false;
+static uint32_t filterId = 0;
+
+void analyzerSetFilter(bool enable, uint32_t id)
+{
+    filterEnabled = enable;
+    filterId = id;
+}
 
 void analyzerLoop()
 {
+    if (!cfg.encoder) return;
+
     CANRxItem item;
 
     while (rxBufferPop(item))
     {
-        CANFrameWire frame;
+        if (cfg.filterEnabled &&
+            item.msg.identifier != cfg.filterId)
+            continue;
 
-        // header
-        frame.header.sync = CAN_SYNC;
-        frame.header.version = CAN_VER;
-
-        // payload
-        frame.pkt.ts  = item.timestamp;
-        frame.pkt.id  = item.msg.identifier;
-        frame.pkt.dlc = item.msg.data_length_code;
-        memcpy(frame.pkt.data, item.msg.data, 8);
-        frame.pkt.flags = item.msg.flags;
-
-        Serial.write((uint8_t*)&frame, CAN_FRAME_SIZE);
+        cfg.encoder->encode(item);
     }
 }
