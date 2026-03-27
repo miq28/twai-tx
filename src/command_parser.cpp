@@ -36,7 +36,7 @@ bool parseCommand(char *buf, Command &cmd)
     if (buf[0] == 'l')
     {
         cmd.type = CMD_SET_LISTEN;
-        cmd.value_u32 = atoi(buf + 1);
+        cmd.value_bool = atoi(buf + 1);
         return true;
     }
 

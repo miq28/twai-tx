@@ -44,8 +44,8 @@ void handleCommand(const Command &cmd)
         break;
 
     case CMD_SET_LISTEN:
-        if (CANDriver::reinit(canState.baud, cmd.value_int))
-            canState.listenOnly = cmd.value_int;
+        if (CANDriver::reinit(canState.baud, cmd.value_bool))
+            canState.listenOnly = cmd.value_bool;
         break;
 
     case CMD_STATUS:
@@ -58,8 +58,8 @@ void handleCommand(const Command &cmd)
     case CMD_SET_EXTENDED:
         canFrameCfg.extended = (cmd.value_int == 1);
         // if (CANDriver::reinit(canState.baud, cmd.value_int))
-            Serial.printf("[CAN] Frame mode: %s\n",
-                          canFrameCfg.extended ? "EXTENDED (29-bit)" : "STANDARD (11-bit)");
+        Serial.printf("[CAN] Frame mode: %s\n",
+                      canFrameCfg.extended ? "EXTENDED (29-bit)" : "STANDARD (11-bit)");
         break;
 
     case CMD_RESET:

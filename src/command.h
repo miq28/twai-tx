@@ -26,4 +26,5 @@ struct Command
     uint32_t value_u32;
 
     char str[16];
+    bool value_bool;
 };
