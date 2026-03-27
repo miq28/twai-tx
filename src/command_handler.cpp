@@ -24,6 +24,8 @@ void handleCommand(const Command &cmd)
             appState.mode = MODE_GENERATOR;
         else if (strcmp(cmd.str, "ecu") == 0)
             appState.mode = MODE_ECU;
+        else if (strcmp(cmd.str, "analyzer") == 0)
+            appState.mode = MODE_ANALYZER;
         break;
 
     case CMD_SET_BAUD:

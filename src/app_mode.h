@@ -12,7 +12,8 @@ enum Mode
 {
     MODE_GENERATOR,  // previous MODE_MAX
     MODE_SLOW,
-    MODE_ECU         // new
+    MODE_ECU,         // new
+    MODE_ANALYZER   // NEW
 };
 
 struct AppState

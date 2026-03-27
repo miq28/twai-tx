@@ -131,5 +131,13 @@ bool parseCommand(char *buf, Command &cmd)
         return true;
     }
 
+    // ===== MODE ANALYZER =====
+    if (strcmp(buf, "mode analyzer") == 0 || strcmp(buf, "m3") == 0)
+    {
+        cmd.type = CMD_SET_MODE;
+        strcpy(cmd.str, "analyzer");
+        return true;
+    }
+
     return false;
 }

@@ -10,7 +10,7 @@ CANFrameConfig canFrameCfg;
 void initAppState()
 {
     appState.running = true;
-    appState.mode = MODE_GENERATOR;
+    appState.mode = MODE_ANALYZER;
     appState.target_fps = DEFAULT_FPS;
     appState.delay_us = 0;
     appState.locked_id = -1;
