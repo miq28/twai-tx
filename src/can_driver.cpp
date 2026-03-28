@@ -8,6 +8,8 @@ namespace CANDriver
 static uint32_t currentBaud = 500000;
 static bool currentListenOnly = false;
 
+static bool driverRunning = false;
+
 bool getTiming(uint32_t baud, twai_timing_config_t &t)
 {
     switch (baud)
@@ -61,6 +63,7 @@ static bool startDriver(uint32_t baud, bool listenOnly)
     if (twai_driver_install(&g_config, &t_config, &f_config) != ESP_OK)
     {
         CAN_LOG("[CAN] Install failed\n");
+        driverRunning = false;
         return false;
     }
 
@@ -72,6 +75,7 @@ static bool startDriver(uint32_t baud, bool listenOnly)
 
     currentBaud = baud;
     currentListenOnly = listenOnly;
+    driverRunning = true;
 
     CAN_LOG("[CAN] Started (%s)\n", listenOnly ? "LISTEN ONLY" : "NORMAL");
 
@@ -88,6 +92,7 @@ bool reinit(uint32_t baud, bool listenOnly)
     CAN_LOG("[CAN] Reinit requested → baud:%lu listen:%d\n", baud, listenOnly);
 
     twai_stop();
+    driverRunning = false;
     twai_driver_uninstall();
 
     return startDriver(baud, listenOnly);
@@ -96,6 +101,21 @@ bool reinit(uint32_t baud, bool listenOnly)
 bool send(const twai_message_t &msg)
 {
     return twai_transmit((twai_message_t *)&msg, 0) == ESP_OK;
+}
+
+bool isRunning()
+{
+    return driverRunning;
+}
+
+uint32_t getCurrentBaud()
+{
+    return currentBaud;
+}
+
+bool isListenOnly()
+{
+    return currentListenOnly;
 }
 
 }

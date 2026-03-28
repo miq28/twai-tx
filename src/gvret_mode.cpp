@@ -4,6 +4,8 @@
 #include <Arduino.h>
 #include "gvret_stream.h"
 
+static bool binaryMode = false;
+
 // ===== STATE MACHINE =====
 enum GVRET_STATE
 {
@@ -15,8 +17,6 @@ enum GVRET_STATE
 static GVRET_STATE state = IDLE;
 static uint8_t step = 0;
 static uint32_t build_int = 0;
-
-static bool busEnabled = false;
 
 // ===== RESPONSES =====
 
@@ -47,11 +47,15 @@ static void sendCANConfig()
     resp[0] = 0xF1;
     resp[1] = 6;
 
-    resp[2] = busEnabled ? 1 : 0;
-    if (canState.listenOnly)
+    resp[2] = 0;
+
+    if (CANDriver::isRunning())
+        resp[2] |= (1 << 0);
+
+    if (CANDriver::isListenOnly())
         resp[2] |= (1 << 4);
 
-    uint32_t baud = canState.baud;
+    uint32_t baud = CANDriver::getCurrentBaud();
 
     resp[3] = baud & 0xFF;
     resp[4] = baud >> 8;
@@ -157,11 +161,6 @@ static void handleSetupCAN(uint8_t b)
         if (enable)
         {
             CANDriver::reinit(baud, listen);
-            busEnabled = true;
-        }
-        else
-        {
-            busEnabled = false;
         }
         break;
     }
@@ -201,6 +200,7 @@ void processIncomingByte(uint8_t b)
         if (b == 0xE7)
         {
             // enter binary mode (no response required)
+            binaryMode = true;
             return;
         }
         if (b == 0xF1)
@@ -245,5 +245,8 @@ void streamCAN()
 void gvretLoop()
 {
     handleSerialInput();
-    gvretStream();
+    if (CANDriver::isRunning() && binaryMode)
+    {
+        gvretStream();
+    }
 }

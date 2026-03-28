@@ -39,8 +39,7 @@ void handleCommand(const Command &cmd)
         break;
 
     case CMD_SET_BAUD:
-        if (CANDriver::reinit(cmd.value_u32, canState.listenOnly))
-            canState.baud = cmd.value_u32;
+        CANDriver::reinit(cmd.value_u32, CANDriver::isListenOnly());
         break;
 
     case CMD_SET_FPS:
@@ -56,20 +55,19 @@ void handleCommand(const Command &cmd)
         break;
 
     case CMD_SET_LISTEN:
-        if (CANDriver::reinit(canState.baud, cmd.value_bool))
-            canState.listenOnly = cmd.value_bool;
+        CANDriver::reinit(CANDriver::getCurrentBaud(), cmd.value_bool);
         break;
 
     case CMD_STATUS:
-        Serial.printf("Mode:%d Baud:%lu FPS:%d\n",
+        Serial.printf("FPS:%d Mode:%d Baud:%lu, listen-only:%s\n",
+                      appState.target_fps,
                       appState.mode,
-                      canState.baud,
-                      appState.target_fps);
+                      CANDriver::getCurrentBaud(),
+                      CANDriver::isListenOnly() ? "YES" : "NO");
         break;
 
     case CMD_SET_EXTENDED:
         canFrameCfg.extended = (cmd.value_int == 1);
-        // if (CANDriver::reinit(canState.baud, cmd.value_int))
         Serial.printf("[CAN] Frame mode: %s\n",
                       canFrameCfg.extended ? "EXTENDED (29-bit)" : "STANDARD (11-bit)");
         break;

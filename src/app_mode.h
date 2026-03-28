@@ -26,13 +26,6 @@ struct AppState
     int locked_id;
 };
 
-struct CANState
-{
-    uint32_t baud;
-    bool listenOnly;
-};
-
-extern CANState canState;
 extern AppState appState;
 
 void initAppState();
