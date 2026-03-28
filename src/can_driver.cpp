@@ -98,4 +98,51 @@ bool send(const twai_message_t &msg)
     return twai_transmit((twai_message_t *)&msg, 0) == ESP_OK;
 }
 
+bool send(CAN_FRAME& txFrame)
+{
+    twai_message_t __TX_frame;
+
+    __TX_frame.identifier = txFrame.id;
+    __TX_frame.data_length_code = txFrame.length;
+    __TX_frame.rtr = txFrame.rtr;
+    __TX_frame.extd = txFrame.extended;
+    for (int i = 0; i < 8; i++) __TX_frame.data[i] = txFrame.data.byte[i];
+
+    //don't wait long if the queue was full. The end user code shouldn't be sending faster
+    //than the buffer can empty. Set a bigger TX buffer or delay sending if this is a problem.
+    esp_err_t result;
+
+// #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)
+//     result = twai_transmit_v2(bus_handle, &__TX_frame, pdMS_TO_TICKS(4));
+// #else
+//     result = twai_transmit(&__TX_frame, pdMS_TO_TICKS(4));
+// #endif
+
+    result = twai_transmit(&__TX_frame, pdMS_TO_TICKS(4));
+
+    switch (result)
+    {
+    case ESP_OK:
+        // if (debuggingMode) Serial.write('<');
+        break;
+    case ESP_ERR_TIMEOUT:
+        // if (debuggingMode) Serial.write('T');
+        break;
+    case ESP_ERR_INVALID_ARG:
+    case ESP_FAIL:
+    case ESP_ERR_INVALID_STATE:
+    case ESP_ERR_NOT_SUPPORTED:
+        // if (debuggingMode) Serial.write('!');
+        break;
+    }
+    
+    return true;
+}
+
+
+void sendFrame(CAN_FRAME &frame)
+{
+    send(frame);
+}
+
 }

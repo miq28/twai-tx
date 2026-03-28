@@ -7,6 +7,7 @@
 #include "can_rx_task.h"
 #include "analyzer_mode.h"
 #include "gvret_mode.h"
+#include "gvret_protocol.h"
 
 void setup()
 {
@@ -15,11 +16,13 @@ void setup()
     CANDriver::init(500000, false);
     startCanRxTask();
     analyzerInit();
+    resetGvretEnum();
 }
 
 void loop()
 {
-    transportSerialProcess();
+    // if (appState.mode != MODE_SAVVYCAN)
+    //     transportSerialProcess();
 
     switch (appState.mode)
     {

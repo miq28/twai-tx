@@ -3,9 +3,13 @@
 #include "can_driver.h"
 #include "app_mode.h"
 #include <Arduino.h>
+#include "gvret_protocol.h"
+#include "gvret_encoder.h"
 
 static bool busEnabled = false;
 static bool handshakeDone = false;
+
+static GVRETProtocol gvret;
 
 // ===== BYTE-BY-BYTE COMMAND PARSER =====
 void processIncomingByte(uint8_t b)
@@ -19,33 +23,39 @@ void processIncomingByte(uint8_t b)
 }
 
 // ===== SERIAL RX =====
-void handleSerialInput()
+static void handleSerialInput()
 {
     while (Serial.available())
     {
-        uint8_t b = Serial.read();
-        processIncomingByte(b);
+        gvret.handleByte(Serial.read());
+
+        // trigger immediate response
+        // gvretForceFlush = true;
     }
 }
 
 // ===== STREAM CAN → GVRET =====
-void streamCAN()
+static void streamCAN()
 {
-    if (!busEnabled || !handshakeDone)
+    if (!gvret.isHandshakeDone() || !gvret.isBusEnabled())
         return;
 
     CANRxItem item;
 
     while (rxBufferPop(item))
     {
-        // encode GVRET frame
-        // Serial.write(...)
+        gvretEncoder.encode(item);
     }
 }
 
 // ===== MAIN LOOP =====
 void gvretLoop()
 {
-    handleSerialInput();   // 🔴 command handling
-    streamCAN();           // 🔴 data streaming
+    handleSerialInput();
+    streamCAN();
+}
+
+void resetGvretEnum()
+{
+    gvret.reset();
 }

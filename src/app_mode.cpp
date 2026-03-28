@@ -11,7 +11,7 @@ void initAppState()
 {
     // ===== APP STATE =====
     appState.running = true;
-    appState.mode = MODE_ANALYZER;
+    appState.mode = MODE_SAVVYCAN;
     appState.target_fps = DEFAULT_FPS;
     appState.delay_us = 0;
     appState.locked_id = -1;

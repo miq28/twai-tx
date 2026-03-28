@@ -2,3 +2,4 @@
 
 void gvretInit();
 void gvretLoop();
+void resetGvretEnum();

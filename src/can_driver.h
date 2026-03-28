@@ -1,5 +1,6 @@
 #pragma once
 #include <driver/twai.h>
+#include "can_common.h"
 
 namespace CANDriver
 {
@@ -10,4 +11,8 @@ namespace CANDriver
     bool getTiming(uint32_t baud, twai_timing_config_t &t);
     // 🔥 NEW
     bool reinit(uint32_t baud, bool listenOnly);
+
+
+    bool send(CAN_FRAME& txFrame);
+    void sendFrame(CAN_FRAME &frame);
 }
