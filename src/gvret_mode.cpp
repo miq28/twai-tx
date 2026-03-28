@@ -2,6 +2,7 @@
 #include "can_driver.h"
 #include "app_mode.h"
 #include <Arduino.h>
+#include "gvret_stream.h"
 
 // ===== STATE MACHINE =====
 enum GVRET_STATE
@@ -244,4 +245,5 @@ void streamCAN()
 void gvretLoop()
 {
     handleSerialInput();
+    gvretStream();
 }
