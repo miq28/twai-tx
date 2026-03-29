@@ -31,6 +31,7 @@ enum STATE {
     ECHO_CAN_FRAME,
     SETUP_EXT_BUSES
 };
+*/
 
 enum GVRET_PROTOCOL
 {
@@ -53,7 +54,6 @@ enum GVRET_PROTOCOL
     PROTO_SETUP_FD = 21,
     PROTO_GET_FD = 22,
 };
-*/
 
 static GVRET_STATE state = IDLE;
 static uint8_t step = 0;
@@ -119,7 +119,7 @@ static void handleCommand(uint8_t cmd)
 {
     switch (cmd)
     {
-    case 1: // PROTO_TIME_SYNC
+    case PROTO_TIME_SYNC: // 1
     {
         uint32_t now = micros();
 
@@ -136,27 +136,27 @@ static void handleCommand(uint8_t cmd)
         break;
     }
 
-    case 9: // KEEPALIVE
-        sendKeepAlive();
-        state = IDLE;
-        break;
-
-    case 7: // GET DEVICE INFO
-        sendDeviceInfo();
-        state = IDLE;
-        break;
-
-    case 6: // GET CAN CONFIG
-        sendCANConfig();
-        state = IDLE;
-        break;
-
-    case 5: // SETUP CAN BUS
+    case PROTO_SETUP_CANBUS: // 5
         state = SETUP_CANBUS;
         step = 0;
         break;
 
-    case 12: // PROTO_GET_NUMBUSES
+    case PROTO_GET_CANBUS_PARAMS: // 6
+        sendCANConfig();
+        state = IDLE;
+        break;
+
+    case PROTO_GET_DEV_INFO: // 7
+        sendDeviceInfo();
+        state = IDLE;
+        break;
+
+    case PROTO_KEEPALIVE: // 9
+        sendKeepAlive();
+        state = IDLE;
+        break;
+
+    case PROTO_GET_NUMBUSES: // 12
     {
         uint8_t resp[] = {
             0xF1,
@@ -272,13 +272,6 @@ void handleSerialInput()
     {
         processIncomingByte(Serial.read());
     }
-}
-
-// ===== STREAM (DISABLED FOR NOW) =====
-
-void streamCAN()
-{
-    // NOT YET
 }
 
 // ===== MAIN LOOP =====
