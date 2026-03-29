@@ -5,6 +5,8 @@
 #include "gvret_stream.h"
 
 static bool binaryMode = false;
+static uint32_t lastActivityMs = 0;
+static bool savvyConnected = false;
 
 // ===== STATE MACHINE =====
 enum GVRET_STATE
@@ -152,6 +154,8 @@ static void handleCommand(uint8_t cmd)
         break;
 
     case PROTO_KEEPALIVE: // 9
+        lastActivityMs = millis();
+        savvyConnected = true;
         sendKeepAlive();
         state = IDLE;
         break;
@@ -278,7 +282,16 @@ void handleSerialInput()
 
 void gvretLoop()
 {
+    // timeout = 1 second (adjust if needed)
+    if (savvyConnected && (millis() - lastActivityMs > 1000))
+    {
+        savvyConnected = false;
+        binaryMode = false;
+        Serial.println("SavvyCan connection lost, exiting binary mode");
+    }
+
     handleSerialInput();
+
     if (CANDriver::isRunning() && binaryMode)
     {
         gvretStream();
