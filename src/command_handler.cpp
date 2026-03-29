@@ -59,7 +59,7 @@ void handleCommand(const Command &cmd)
         break;
 
     case CMD_STATUS:
-        Serial.printf("Mode:%d Baud:%lu, Running:%d listen-only:%s FPS:%d\n",                      
+        Serial.printf("Mode:%d Baud:%lu, Running:%s listen-only:%s FPS:%d\n",                      
                       appState.mode,
                       CANDriver::getCurrentBaud(),
                       CANDriver::isRunning() ? "true" : "false",

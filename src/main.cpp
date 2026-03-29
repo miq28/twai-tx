@@ -19,10 +19,7 @@ void setup()
 
 void loop()
 {
-    if (appState.mode != MODE_SAVVYCAN)
-    {
-        transportSerialProcess();
-    }
+    transportSerialProcess();   // always run
 
     switch (appState.mode)
     {

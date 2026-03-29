@@ -268,16 +268,6 @@ void processIncomingByte(uint8_t b)
     }
 }
 
-// ===== SERIAL RX =====
-
-void handleSerialInput()
-{
-    while (Serial.available())
-    {
-        processIncomingByte(Serial.read());
-    }
-}
-
 // ===== MAIN LOOP =====
 
 void gvretLoop()
@@ -289,8 +279,6 @@ void gvretLoop()
         binaryMode = false;
         Serial.println("SavvyCan connection lost, exiting binary mode");
     }
-
-    handleSerialInput();
 
     if (CANDriver::isRunning() && binaryMode)
     {

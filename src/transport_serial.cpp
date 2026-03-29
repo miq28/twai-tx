@@ -1,9 +1,8 @@
 #include <Arduino.h>
 #include "transport_serial.h"
+#include "input_dispatcher.h"
 
-#include "command.h"
-#include "command_parser.h"
-#include "command_handler.h"
+static InputContext serialCtx;
 
 void transportSerialInit()
 {
@@ -12,34 +11,12 @@ void transportSerialInit()
 
     Serial.println("Type 'help' for commands");
 }
+
 void transportSerialProcess()
 {
-    static char buf[64];
-    static uint8_t idx = 0;
-
     while (Serial.available())
     {
-        char c = Serial.read();
-
-        if (c == '\n' || c == '\r')
-        {
-            buf[idx] = 0;
-
-            Command cmd;
-            if (parseCommand(buf, cmd))
-            {
-                handleCommand(cmd);
-            }
-            // else
-            // {
-            //     Serial.println("Unknown command. Type 'help'");
-            // }
-
-            idx = 0;
-        }
-        else if (idx < sizeof(buf) - 1)
-        {
-            buf[idx++] = c;
-        }
+        uint8_t b = Serial.read();
+        dispatchByte(serialCtx, b);
     }
 }
