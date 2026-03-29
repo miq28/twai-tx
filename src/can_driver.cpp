@@ -7,8 +7,8 @@ namespace CANDriver
 
 static uint32_t currentBaud = 500000;
 static bool currentListenOnly = false;
-
 static bool driverRunning = false;
+
 
 bool getTiming(uint32_t baud, twai_timing_config_t &t)
 {
