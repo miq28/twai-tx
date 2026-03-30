@@ -17,14 +17,11 @@ void analyzerSetEncoder(ICanEncoder* enc)
 {
     cfg.encoder = enc;
 }
-// optional filter (application layer)
-static bool filterEnabled = false;
-static uint32_t filterId = 0;
 
 void analyzerSetFilter(bool enable, uint32_t id)
 {
-    filterEnabled = enable;
-    filterId = id;
+    cfg.filterEnabled = enable;
+    cfg.filterId = id;
 }
 
 void analyzerLoop()
