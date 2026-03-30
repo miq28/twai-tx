@@ -246,9 +246,15 @@ void processIncomingByte(uint8_t b)
     case IDLE:
         if (b == 0xE7)
         {
+            lastActivityMs = millis();
             // enter binary mode (no response required)
             binaryMode = true;
             RS485.println("Entering binary mode");
+            if (appState.mode != MODE_SAVVYCAN)
+            {
+                appState.mode = MODE_SAVVYCAN;
+                RS485.println("Mode switched to SAVVYCAN");
+            }
             return;
         }
         if (b == 0xF1)
@@ -276,11 +282,13 @@ void processIncomingByte(uint8_t b)
 void gvretLoop()
 {
     // timeout = 10 seconds (adjust if needed)
-    if (savvyConnected && (millis() - lastActivityMs > 10300))
+    if (millis() - lastActivityMs > 10300)
     {
         savvyConnected = false;
         binaryMode = false;
         RS485.println("SavvyCan connection lost, exiting binary mode");
+        appState.mode = MODE_ANALYZER;
+        RS485.println("Mode switched to ANALYZER");
     }
 
     if (CANDriver::isRunning() && savvyConnected)

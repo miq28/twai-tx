@@ -49,13 +49,23 @@ void dispatchByte(InputContext &ctx, uint8_t b)
         {
             appState.mode = MODE_ANALYZER;
             escapeCount = 0;
-            RS485.println("Exit SAVVYCAN mode");
+            RS485.println("[ESC] Exit SAVVYCAN mode");
             return;
         }
     }
     else
     {
         escapeCount = 0;
+    }
+
+    // ===== AUTO-SWITCH TO SAVVYCAN =====
+    if (appState.mode != MODE_SAVVYCAN)
+    {
+        if (b == 0xE7 || b == 0xF1)
+        {
+            appState.mode = MODE_SAVVYCAN;
+            RS485.println("[AUTO] Enter SAVVYCAN mode");
+        }
     }
 
     // ===== ROUTING =====
