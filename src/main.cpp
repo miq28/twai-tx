@@ -7,11 +7,13 @@
 #include "can_rx_task.h"
 #include "analyzer_mode.h"
 #include "gvret_mode.h"
+#include "rs485.h"
 
 void setup()
 {
     transportSerialInit();
     initAppState();
+    RS485.begin(1000000);
     CANDriver::init(500000, false);
     startCanRxTask();
     analyzerInit();

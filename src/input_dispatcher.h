@@ -3,7 +3,6 @@
 
 struct InputContext
 {
-    bool binaryMode = false;
 };
 
 // main entry

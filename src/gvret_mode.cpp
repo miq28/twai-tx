@@ -3,6 +3,7 @@
 #include "app_mode.h"
 #include <Arduino.h>
 #include "gvret_stream.h"
+#include "rs485.h"
 
 static bool binaryMode = false;
 static uint32_t lastActivityMs = 0;
@@ -156,6 +157,7 @@ static void handleCommand(uint8_t cmd)
     case PROTO_KEEPALIVE: // 9
         lastActivityMs = millis();
         savvyConnected = true;
+        RS485.printf("SavvyCan keep-alive received, time: %lu\n", millis());
         sendKeepAlive();
         state = IDLE;
         break;
@@ -246,6 +248,7 @@ void processIncomingByte(uint8_t b)
         {
             // enter binary mode (no response required)
             binaryMode = true;
+            RS485.println("Entering binary mode");
             return;
         }
         if (b == 0xF1)
@@ -272,15 +275,15 @@ void processIncomingByte(uint8_t b)
 
 void gvretLoop()
 {
-    // timeout = 1 second (adjust if needed)
-    if (savvyConnected && (millis() - lastActivityMs > 1000))
+    // timeout = 10 seconds (adjust if needed)
+    if (savvyConnected && (millis() - lastActivityMs > 10300))
     {
         savvyConnected = false;
         binaryMode = false;
-        Serial.println("SavvyCan connection lost, exiting binary mode");
+        RS485.println("SavvyCan connection lost, exiting binary mode");
     }
 
-    if (CANDriver::isRunning() && binaryMode)
+    if (CANDriver::isRunning() && savvyConnected)
     {
         gvretStream();
     }
