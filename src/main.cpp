@@ -11,6 +11,8 @@
 
 extern void transportTxTask(void *);
 extern void canTxTask(void *);
+extern void canRouterProcess();
+extern void commandTask(void*);
 
 void setup()
 {
@@ -23,11 +25,13 @@ void setup()
 
     xTaskCreatePinnedToCore(transportTxTask, "tx_out", 4096, NULL, 8, NULL, 0);
     xTaskCreatePinnedToCore(canTxTask, "can_tx", 4096, NULL, 18, NULL, 1);
+    xTaskCreatePinnedToCore(commandTask, "cmd", 4096, NULL, 6, NULL, 0);
 }
 
 void loop()
 {
-    transportSerialProcess(); // always run
+    transportSerialProcess();   // input only
+    canRouterProcess();         // NEW
 
     switch (appState.mode)
     {

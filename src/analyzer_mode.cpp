@@ -6,6 +6,13 @@
 
 static AnalyzerConfig cfg;
 
+#define ANALYZER_Q_SIZE 512
+static CANRxItem q[ANALYZER_Q_SIZE];
+static uint16_t h = 0, t = 0;
+
+CANRxItem item;
+int budget = 64;
+
 void analyzerInit()
 {
     cfg.encoder = &asciiEncoder; // ✅ default here
@@ -33,12 +40,23 @@ void analyzerLoop()
 
     int budget = 64;
 
-    while (budget-- && rxBufferPop(item))
+    while (budget-- && t != h)
     {
-        if (cfg.filterEnabled &&
-            item.msg.identifier != cfg.filterId)
+        item = q[t];
+        t = (t + 1) % ANALYZER_Q_SIZE;
+
+        if (cfg.filterEnabled && item.msg.identifier != cfg.filterId)
             continue;
 
         cfg.encoder->encode(item);
     }
+}
+
+void analyzerPush(const CANRxItem &item)
+{
+    uint16_t n = (h + 1) % ANALYZER_Q_SIZE;
+    if (n == t)
+        return;
+    q[h] = item;
+    h = n;
 }

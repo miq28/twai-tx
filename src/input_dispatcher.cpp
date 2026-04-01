@@ -4,6 +4,7 @@
 #include "command_handler.h"
 #include "app_mode.h"
 #include "rs485.h"
+#include "command_queue.h"
 
 // forward declarations (no coupling)
 void processIncomingByte(uint8_t b); // GVRET
@@ -27,7 +28,7 @@ void cliProcessByte(uint8_t b)
         Command cmd;
         if (parseCommand(buf, cmd))
         {
-            handleCommand(cmd);
+            cmdPush(cmd);
         }
 
         idx = 0;

@@ -5,17 +5,23 @@
 #include "gvret_stream.h"
 #include "rs485.h"
 #include "transport_tx_buffer.h"
+#include "can_tx_buffer.h"
 
 static bool binaryMode = false;
 static uint32_t lastActivityMs = 0;
 static bool savvyConnected = false;
+
+static uint8_t frameBuf[16];
+static uint8_t frameIdx = 0;
+static uint8_t frameLen = 0;
 
 // ===== STATE MACHINE =====
 enum GVRET_STATE
 {
     IDLE,
     GET_COMMAND,
-    SETUP_CANBUS
+    SETUP_CANBUS,
+    BUILD_CAN_FRAME
 };
 
 /*
@@ -179,6 +185,12 @@ static void handleCommand(uint8_t cmd)
         break;
     }
 
+    case PROTO_BUILD_CAN_FRAME: // 0
+        state = BUILD_CAN_FRAME;
+        step = 0;
+        frameIdx = 0;
+        break;
+
     default:
         state = IDLE;
         break;
@@ -243,6 +255,47 @@ static void handleSetupCAN(uint8_t b)
     step++;
 }
 
+static void handleBuildFrame(uint8_t b)
+{
+    frameBuf[frameIdx++] = b;
+
+    // minimum header: ID(4) + DLC(1)
+    if (frameIdx == 5)
+    {
+        frameLen = frameBuf[4] & 0xF; // DLC
+    }
+
+    // full frame received
+    if (frameIdx >= 5 + frameLen)
+    {
+        twai_message_t msg = {};
+
+        // ID
+        uint32_t id =
+            frameBuf[0] |
+            (frameBuf[1] << 8) |
+            (frameBuf[2] << 16) |
+            (frameBuf[3] << 24);
+
+        msg.extd = (id >> 31) & 1;
+        msg.identifier = id & 0x1FFFFFFF;
+
+        // DLC
+        msg.data_length_code = frameLen;
+
+        // DATA
+        for (int i = 0; i < frameLen; i++)
+        {
+            msg.data[i] = frameBuf[5 + i];
+        }
+
+        // PUSH TO CAN TX
+        canTxPush(msg);
+
+        state = IDLE;
+    }
+}
+
 // ===== BYTE PARSER =====
 
 void processIncomingByte(uint8_t b)
@@ -275,6 +328,10 @@ void processIncomingByte(uint8_t b)
 
     case SETUP_CANBUS:
         handleSetupCAN(b);
+        break;
+
+    case BUILD_CAN_FRAME:
+        handleBuildFrame(b);
         break;
 
     default:
