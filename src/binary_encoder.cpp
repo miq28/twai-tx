@@ -2,6 +2,7 @@
 #include "can_encoder.h"
 #include <Arduino.h>
 #include <string.h>
+#include "transport_tx_buffer.h"
 
 class BinaryEncoder : public ICanEncoder
 {
@@ -21,7 +22,8 @@ public:
         memcpy(frame.pkt.data, item.msg.data, 8);
         frame.pkt.flags = item.msg.flags;
 
-        Serial.write((uint8_t*)&frame, sizeof(frame));
+        // Serial.write((uint8_t*)&frame, sizeof(frame));
+        txPush((uint8_t*)&frame, sizeof(frame));
     }
 };
 

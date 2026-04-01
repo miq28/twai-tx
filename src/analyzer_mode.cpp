@@ -2,18 +2,18 @@
 #include "can_rx_buffer.h"
 #include "can_encoder.h"
 #include "app_mode.h"
-#include "ascii_encoder.h"   // ✅ allowed (same module group)
+#include "ascii_encoder.h" // ✅ allowed (same module group)
 
 static AnalyzerConfig cfg;
 
 void analyzerInit()
 {
-    cfg.encoder = &asciiEncoder;   // ✅ default here
+    cfg.encoder = &asciiEncoder; // ✅ default here
     cfg.filterEnabled = false;
     cfg.filterId = 0;
 }
 
-void analyzerSetEncoder(ICanEncoder* enc)
+void analyzerSetEncoder(ICanEncoder *enc)
 {
     cfg.encoder = enc;
 }
@@ -26,11 +26,14 @@ void analyzerSetFilter(bool enable, uint32_t id)
 
 void analyzerLoop()
 {
-    if (!cfg.encoder) return;
+    if (!cfg.encoder)
+        return;
 
     CANRxItem item;
 
-    while (rxBufferPop(item))
+    int budget = 64;
+
+    while (budget-- && rxBufferPop(item))
     {
         if (cfg.filterEnabled &&
             item.msg.identifier != cfg.filterId)

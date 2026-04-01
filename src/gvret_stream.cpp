@@ -1,5 +1,6 @@
 #include "can_rx_buffer.h"
 #include <Arduino.h>
+#include "transport_tx_buffer.h"
 
 void gvretStream()
 {
@@ -43,6 +44,6 @@ void gvretStream()
         // ===== TERMINATOR =====
         buf[idx++] = 0;
 
-        Serial.write(buf, idx);
+        txPush(buf, idx);
     }
 }

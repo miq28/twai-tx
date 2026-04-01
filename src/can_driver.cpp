@@ -1,6 +1,7 @@
 #include "can_driver.h"
 #include "config.h"
 #include <Arduino.h>
+#include "can_tx_buffer.h"
 
 namespace CANDriver
 {
@@ -100,7 +101,7 @@ bool reinit(uint32_t baud, bool listenOnly)
 
 bool send(const twai_message_t &msg)
 {
-    return twai_transmit((twai_message_t *)&msg, 0) == ESP_OK;
+    return canTxPush(msg);
 }
 
 bool isRunning()

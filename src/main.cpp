@@ -9,6 +9,9 @@
 #include "gvret_mode.h"
 #include "rs485.h"
 
+extern void transportTxTask(void *);
+extern void canTxTask(void *);
+
 void setup()
 {
     transportSerialInit();
@@ -17,11 +20,14 @@ void setup()
     CANDriver::init(500000, false);
     startCanRxTask();
     analyzerInit();
+
+    xTaskCreatePinnedToCore(transportTxTask, "tx_out", 4096, NULL, 8, NULL, 0);
+    xTaskCreatePinnedToCore(canTxTask, "can_tx", 4096, NULL, 18, NULL, 1);
 }
 
 void loop()
 {
-    transportSerialProcess();   // always run
+    transportSerialProcess(); // always run
 
     switch (appState.mode)
     {
