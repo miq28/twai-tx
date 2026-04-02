@@ -1,19 +1,12 @@
 #include "input_dispatcher.h"
 #include "command.h"
-#include "command_parser.h"
-#include "command_handler.h"
 #include "app_mode.h"
+#include "gvret.h"
+#include <stdlib.h>
+#include <string.h>
 #include "rs485.h"
-#include "command_queue.h"
-
-// forward declarations (no coupling)
-void processIncomingByte(uint8_t b); // GVRET
-void handleCommand(const Command &cmd);
-bool parseCommand(const char *buf, Command &cmd);
 
 static uint8_t escapeCount = 0;
-
-// ===== CLI =====
 static char buf[64];
 static uint8_t idx = 0;
 
@@ -21,14 +14,22 @@ void cliProcessByte(uint8_t b)
 {
     char c = (char)b;
 
-    if (c == '\n' || c == '\r')
+    if (c == '\n') return;
+
+    if (c == '\r')
     {
         buf[idx] = 0;
 
+        RS485.printf("[CLI] %s\n", buf);
+
         Command cmd;
-        if (parseCommand(buf, cmd))
+        if (commandParse(buf, cmd))
         {
             cmdPush(cmd);
+        }
+        else
+        {
+            RS485.println("[ERR] unknown command");
         }
 
         idx = 0;
@@ -39,43 +40,28 @@ void cliProcessByte(uint8_t b)
     }
 }
 
-// ===== DISPATCHER =====
-void dispatchByte(InputContext &ctx, uint8_t b)
+void dispatchByte(InputContext&, uint8_t b)
 {
-    // ===== ESCAPE =====
     if (b == '+')
     {
-        escapeCount++;
-        if (escapeCount >= 3)
+        if (++escapeCount >= 3)
         {
             appState.mode = MODE_ANALYZER;
             escapeCount = 0;
-            RS485.println("[ESC] Exit SAVVYCAN mode");
+            RS485.println("[ESC] exit savvy");
             return;
         }
     }
-    else
+    else escapeCount = 0;
+
+    if (b == 0xE7 || b == 0xF1)
     {
-        escapeCount = 0;
+        appState.mode = MODE_SAVVYCAN;
+        RS485.println("[AUTO] SAVVYCAN");
     }
 
-    // ===== AUTO-SWITCH TO SAVVYCAN =====
-    if (appState.mode != MODE_SAVVYCAN)
-    {
-        if (b == 0xE7 || b == 0xF1)
-        {
-            appState.mode = MODE_SAVVYCAN;
-            RS485.println("[AUTO] Enter SAVVYCAN mode");
-        }
-    }
-
-    // ===== ROUTING =====
     if (appState.mode == MODE_SAVVYCAN)
-    {
-        processIncomingByte(b);
-    }
+        gvretProcessByte(b);
     else
-    {
         cliProcessByte(b);
-    }
 }

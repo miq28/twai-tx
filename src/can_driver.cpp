@@ -1,7 +1,7 @@
 #include "can_driver.h"
 #include "config.h"
 #include <Arduino.h>
-#include "can_tx_buffer.h"
+#include "can_pipeline.h"
 
 namespace CANDriver
 {

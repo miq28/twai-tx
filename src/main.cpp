@@ -1,42 +1,46 @@
-#include <Arduino.h>
+#include "can_pipeline.h"
+#include "transport.h"
 #include "can_driver.h"
-#include "transport_serial.h"
+#include "analyzer.h"
+#include "gvret.h"
+#include "command.h"
 #include "app_mode.h"
+#include "rs485.h"
 #include "generator_mode.h"
 #include "mode_ecu.h"
-#include "can_rx_task.h"
-#include "analyzer_mode.h"
-#include "gvret_mode.h"
-#include "rs485.h"
-
-extern void transportTxTask(void *);
-extern void canTxTask(void *);
-extern void canRouterProcess();
-extern void commandTask(void*);
 
 void setup()
 {
-    transportSerialInit();
-    initAppState();
+    transportInit();
     RS485.begin(1000000);
-    CANDriver::init(500000, false);
-    startCanRxTask();
-    analyzerInit();
+    RS485.println("BOOT");
 
-    xTaskCreatePinnedToCore(transportTxTask, "tx_out", 4096, NULL, 8, NULL, 0);
-    xTaskCreatePinnedToCore(canTxTask, "can_tx", 4096, NULL, 18, NULL, 1);
-    xTaskCreatePinnedToCore(commandTask, "cmd", 4096, NULL, 6, NULL, 0);
+    initAppState();
+
+    CANDriver::init(500000, false);
+    canPipelineInit();
+
+    RS485.println("INIT DONE");
 }
 
 void loop()
 {
-    transportSerialProcess();   // input only
-    canRouterProcess();         // NEW
+    transportProcess();
+
+    CANRxItem item;
+    int budget = 128;
+
+    while (budget-- && canRxPop(item))
+    {
+        if (appState.mode == MODE_ANALYZER)
+            analyzerPush(item);
+        else if (appState.mode == MODE_SAVVYCAN)
+            gvretPush(item);
+    }
 
     switch (appState.mode)
     {
     case MODE_GENERATOR:
-
     case MODE_SLOW:
         generatorLoop();
         break;
@@ -46,11 +50,24 @@ void loop()
         break;
 
     case MODE_ANALYZER:
-        analyzerLoop();
+        analyzerProcess();
         break;
 
     case MODE_SAVVYCAN:
-        gvretLoop();
+        gvretProcess();
         break;
+    }
+
+    commandProcess();
+
+    static uint32_t last = 0;
+
+    if (millis() - last > 1000)
+    {
+        last = millis();
+        RS485.printf("%lu mode=%d overflow=%lu\n",
+                     micros(),
+                     appState.mode,
+                     canGetRxOverflow());
     }
 }

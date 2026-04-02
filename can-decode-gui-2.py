@@ -11,9 +11,6 @@ from PyQt6 import QtWidgets, QtCore, QtGui
 PORT = "COM5"
 BAUD = 1000000
 
-unpacker = struct.Struct("<H B I I B 8s I")
-FRAME_SIZE = unpacker.size
-
 MAX_QUEUE = 100000
 MAX_ROWS = 200
 
@@ -43,28 +40,50 @@ def reader():
         data = ser.read(4096)
         if not data:
             continue
+        
+        print(data[:20])    # ← add this line
 
         buf.extend(data)
 
-        while len(buf) >= FRAME_SIZE:
-            frame = buf[:FRAME_SIZE]
+        while True:
+            # need at least sync + id + dlc
+            if len(buf) < 6:
+                break
 
-            try:
-                sync, ver, ts, identifier, dlc, data_bytes, flags = unpacker.unpack(frame)
-            except struct.error:
+            # ---- FIND SYNC (0xAA) ----
+            if buf[0] != 0xAA:
                 del buf[0]
                 continue
 
-            if sync != 0xAA55:
+            # ---- ID ----
+            identifier = (
+                buf[1]
+                | (buf[2] << 8)
+                | (buf[3] << 16)
+                | (buf[4] << 24)
+            )
+
+            # ---- DLC ----
+            dlc = buf[5]
+
+            if dlc > 8:
+                # invalid → resync
                 del buf[0]
                 continue
 
-            del buf[:FRAME_SIZE]
+            frame_len = 1 + 4 + 1 + dlc
 
-            data = data_bytes[:dlc]
+            if len(buf) < frame_len:
+                break
+
+            data_bytes = buf[6:6+dlc]
+
+            del buf[:frame_len]
+
+            ts = int(time.time() * 1_000_000)
 
             if len(frame_queue) < MAX_QUEUE:
-                frame_queue.append((ts, identifier, dlc, data))
+                frame_queue.append((ts, identifier, dlc, data_bytes))
 
             frame_counter += 1
 

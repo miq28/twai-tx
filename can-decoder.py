@@ -6,7 +6,7 @@ import curses
 from collections import deque, defaultdict
 
 # ===== CONFIG =====
-PORT = "COM4"
+PORT = "COM5"
 BAUD = 1000000
 
 # Wire format:

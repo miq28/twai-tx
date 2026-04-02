@@ -13,10 +13,7 @@ enum CommandType
     CMD_SET_DELAY,
     CMD_LOCK_ID,
     CMD_SET_LISTEN,
-    CMD_SET_FORMAT,
-    CMD_SET_FILTER,
     CMD_STATUS,
-    CMD_RESET,
     CMD_HELP
 };
 
@@ -30,3 +27,10 @@ struct Command
     char str[16];
     bool value_bool;
 };
+
+// queue
+void cmdPush(const Command& c);
+void commandProcess();
+
+// NEW: parser entry
+bool commandParse(const char* buf, Command& cmd);
