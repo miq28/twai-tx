@@ -8,11 +8,15 @@
 #include "rs485.h"
 #include "generator_mode.h"
 #include "mode_ecu.h"
+#include "transport_manager.h"
+#include "transport_serial.h"
 
 void setup()
 {
     transportInit();
-    RS485.begin(1000000);
+    transportManagerInit();
+    transportManagerAdd(&serialTransport);
+    RS485.begin(2000000);
     RS485.println("BOOT");
 
     initAppState();
@@ -25,7 +29,7 @@ void setup()
 
 void loop()
 {
-    transportProcess();
+    transportManagerProcessRx();
 
     CANRxItem item;
     int budget = 128;

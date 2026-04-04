@@ -1,14 +1,21 @@
 #include "can_pipeline.h"
 #include "transport.h"
+#include "transport_manager.h"
 
 #define Q_SIZE 512
 static CANRxItem q[Q_SIZE];
 static uint16_t h=0,t=0;
 
+static uint32_t analyzerDrop = 0;
+
 void analyzerPush(const CANRxItem& item)
 {
     uint16_t n=(h+1)%Q_SIZE;
-    if(n==t) return;
+    if (n == t)
+    {
+        analyzerDrop++;
+        return;
+    }
     q[h]=item;
     h=n;
 }
@@ -38,6 +45,6 @@ void analyzerProcess()
         for (int i=0;i<dlc;i++)
             out[idx++] = item.msg.data[i];
 
-        transportSend(out, idx);
+        transportManagerSend(out, idx);
     }
 }

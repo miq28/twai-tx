@@ -27,6 +27,7 @@ void RS485Port::begin(uint32_t baud)
     digitalWrite((int)RS485_DE, LOW); // start in RX
 
     RS485Serial.begin(baud, SERIAL_8N1, (int)RS485_RO, (int)RS485_DI);
+    RS485Serial.setDebugOutput(true);
 }
 
 void RS485Port::setTX()

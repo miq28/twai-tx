@@ -1,8 +1,12 @@
 #include <Arduino.h>
 #include "input_dispatcher.h"
+#include "transport_if.h"
+#include "transport_serial.h"
+
+SerialTransport serialTransport;
 
 #if defined(WEACT_STUDIO_CAN485_V1)
-#define TX_SIZE 1024  
+#define TX_SIZE 1024
 #else
 #define TX_SIZE 4096
 #endif
@@ -13,13 +17,18 @@ static volatile uint16_t head = 0, tail = 0;
 static InputContext ctx;
 
 // ================= TX =================
-bool transportSend(const uint8_t *data, int len)
+bool SerialTransport::send(const uint8_t *data, int len)
 {
     for (int i = 0; i < len; i++)
     {
         uint16_t next = (head + 1) % TX_SIZE;
-        if (next == tail)
-            return false;
+
+        while (next == tail) // FIX: no drop
+        {
+            taskYIELD();
+            next = (head + 1) % TX_SIZE;
+        }
+
         buf[head] = data[i];
         head = next;
     }
@@ -51,17 +60,22 @@ static void transportTask(void *)
 // ================= INIT =================
 void transportInit()
 {
+#if defined(WEACT_STUDIO_CAN485_V1)
+    Serial.begin(2000000);
+#else
     Serial.begin(1000000);
+#endif
     xTaskCreatePinnedToCore(transportTask, "tx", 4096, NULL, 8, NULL, 0);
 }
 
 // ================= RX =================
-void transportProcess()
-{
-    int budget = 64;
 
-    while (budget-- && Serial.available())
-    {
-        dispatchByte(ctx, Serial.read());
-    }
+int SerialTransport::available()
+{
+    return Serial.available();
+}
+
+uint8_t SerialTransport::read()
+{
+    return Serial.read();
 }

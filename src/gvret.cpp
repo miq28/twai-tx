@@ -3,19 +3,26 @@
 #include "transport.h"
 #include "can_driver.h"
 #include "rs485.h"
+#include "transport_manager.h"
 
 #define Q_SIZE 512
 
 static CANRxItem q[Q_SIZE];
-static uint16_t h=0,t=0;
+static uint16_t h = 0, t = 0;
+
+static uint32_t gvretDrop = 0;
 
 // ================= RX QUEUE =================
-void gvretPush(const CANRxItem& item)
+void gvretPush(const CANRxItem &item)
 {
-    uint16_t n=(h+1)%Q_SIZE;
-    if(n==t) return;
-    q[h]=item;
-    h=n;
+    uint16_t n = (h + 1) % Q_SIZE;
+    if (n == t)
+    {
+        gvretDrop++;
+        return;
+    }
+    q[h] = item;
+    h = n;
 }
 
 // ================= TX STREAM =================
@@ -33,37 +40,42 @@ void gvretProcess()
         int idx = 0;
 
         buf[idx++] = 0xF1;
-        buf[idx++] = 0;
+        int len_index = idx++; // reserve length byte
 
         uint32_t ts = item.timestamp;
         buf[idx++] = ts;
-        buf[idx++] = ts>>8;
-        buf[idx++] = ts>>16;
-        buf[idx++] = ts>>24;
+        buf[idx++] = ts >> 8;
+        buf[idx++] = ts >> 16;
+        buf[idx++] = ts >> 24;
 
         uint32_t id = item.msg.identifier;
-        if (item.msg.extd) id |= (1UL << 31);
+        if (item.msg.extd)
+            id |= (1UL << 31);
 
         buf[idx++] = id;
-        buf[idx++] = id>>8;
-        buf[idx++] = id>>16;
-        buf[idx++] = id>>24;
+        buf[idx++] = id >> 8;
+        buf[idx++] = id >> 16;
+        buf[idx++] = id >> 24;
 
         uint8_t dlc = item.msg.data_length_code;
         buf[idx++] = dlc;
 
-        for (int i=0;i<dlc;i++)
+        for (int i = 0; i < dlc; i++)
             buf[idx++] = item.msg.data[i];
 
-        buf[idx++] = 0;
+        buf[idx++] = 0; // flags
 
-        transportSend(buf, idx);
+        // ✅ FIX: set correct length (exclude 0xF1 + length byte)
+        buf[len_index] = idx - 2;
+
+        transportManagerSend(buf, idx);
     }
 }
 
 // ================= STATE MACHINE =================
 
-enum {
+enum
+{
     IDLE,
     GET_CMD,
     BUILD_FRAME,
@@ -84,43 +96,69 @@ static uint32_t build_int = 0;
 
 static void sendKeepAlive()
 {
-    uint8_t resp[] = {0xF1, 9, 0xDE, 0xAD};
-    transportSend(resp, sizeof(resp));
+    uint8_t resp[8];
+    int idx = 0;
+
+    resp[idx++] = 0xF1;
+    int len_i = idx++;
+
+    resp[idx++] = 0x09; // command
+    resp[idx++] = 0xDE;
+    resp[idx++] = 0xAD;
+
+    resp[len_i] = idx - 2;
+
+    transportManagerSend(resp, idx);
 }
 
 static void sendDeviceInfo()
 {
-    uint8_t resp[] = {
-        0xF1,
-        7,
-        0x34, 0x12,
-        0x20,
-        0,0,0
-    };
-    transportSend(resp, sizeof(resp));
+    uint8_t resp[16];
+    int idx = 0;
+
+    resp[idx++] = 0xF1;
+    int len_i = idx++;
+
+    resp[idx++] = 0x07; // command
+    resp[idx++] = 0x34;
+    resp[idx++] = 0x12;
+    resp[idx++] = 0x20;
+    resp[idx++] = 0;
+    resp[idx++] = 0;
+    resp[idx++] = 0;
+
+    resp[len_i] = idx - 2;
+
+    transportManagerSend(resp, idx);
 }
 
 static void sendCANConfig()
 {
-    uint8_t resp[12] = {0};
+    uint8_t resp[16];
+    int idx = 0;
 
-    resp[0] = 0xF1;
-    resp[1] = 6;
+    resp[idx++] = 0xF1;
+    int len_i = idx++;
 
+    resp[idx++] = 0x06;
+
+    uint8_t flags = 0;
     if (CANDriver::isRunning())
-        resp[2] |= (1 << 0);
-
+        flags |= (1 << 0);
     if (CANDriver::isListenOnly())
-        resp[2] |= (1 << 4);
+        flags |= (1 << 4);
+
+    resp[idx++] = flags;
 
     uint32_t baud = CANDriver::getCurrentBaud();
+    resp[idx++] = baud;
+    resp[idx++] = baud >> 8;
+    resp[idx++] = baud >> 16;
+    resp[idx++] = baud >> 24;
 
-    resp[3] = baud;
-    resp[4] = baud >> 8;
-    resp[5] = baud >> 16;
-    resp[6] = baud >> 24;
+    resp[len_i] = idx - 2;
 
-    transportSend(resp, 12);
+    transportManagerSend(resp, idx);
 }
 
 // ================= INPUT =================
@@ -215,8 +253,8 @@ void gvretProcessByte(uint8_t b)
             msg.identifier = id & 0x1FFFFFFF;
             msg.data_length_code = frameLen;
 
-            for (int i=0;i<frameLen;i++)
-                msg.data[i] = frameBuf[5+i];
+            for (int i = 0; i < frameLen; i++)
+                msg.data[i] = frameBuf[5 + i];
 
             canTxPush(msg);
             state = IDLE;

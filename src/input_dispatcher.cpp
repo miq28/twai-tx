@@ -14,7 +14,8 @@ void cliProcessByte(uint8_t b)
 {
     char c = (char)b;
 
-    if (c == '\n') return;
+    if (c == '\n')
+        return;
 
     if (c == '\r')
     {
@@ -40,7 +41,7 @@ void cliProcessByte(uint8_t b)
     }
 }
 
-void dispatchByte(InputContext&, uint8_t b)
+void dispatchByte(InputContext &, uint8_t b)
 {
     if (b == '+')
     {
@@ -52,12 +53,22 @@ void dispatchByte(InputContext&, uint8_t b)
             return;
         }
     }
-    else escapeCount = 0;
+    else
+        escapeCount = 0;
 
-    if (b == 0xE7 || b == 0xF1)
+    static uint8_t syncCount = 0;
+
+    if (b == 0xF1)
     {
-        appState.mode = MODE_SAVVYCAN;
-        RS485.println("[AUTO] SAVVYCAN");
+        if (++syncCount > 3)
+        {
+            appState.mode = MODE_SAVVYCAN;
+            RS485.println("[AUTO] SAVVYCAN");
+        }
+    }
+    else
+    {
+        syncCount = 0;
     }
 
     if (appState.mode == MODE_SAVVYCAN)

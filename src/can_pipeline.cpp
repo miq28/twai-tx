@@ -3,7 +3,7 @@
 #include "can_driver.h"
 #include "can_pipeline.h"
 
-static volatile uint32_t rxOverflow = 0;
+static uint32_t rxOverflow = 0;
 
 // ================= RX =================
 #if defined(WEACT_STUDIO_CAN485_V1)
@@ -25,7 +25,7 @@ static twai_message_t txBuf[TX_SIZE];
 static volatile uint16_t txHead = 0, txTail = 0;
 
 // ================= RX TASK =================
-static void canRxTask(void*)
+static void canRxTask(void *)
 {
     twai_message_t msg;
 
@@ -34,22 +34,23 @@ static void canRxTask(void*)
         if (twai_receive(&msg, portMAX_DELAY) == ESP_OK)
         {
             uint16_t next = (rxHead + 1) % RX_SIZE;
+
             if (next != rxTail)
             {
                 rxBuf[rxHead].msg = msg;
                 rxBuf[rxHead].timestamp = micros();
                 rxHead = next;
             }
-        }
-        else
-        {
-            rxOverflow++; // debug
+            else
+            {
+                rxOverflow++; // FIXED: real overflow
+            }
         }
     }
 }
 
 // ================= TX TASK =================
-static void canTxTask(void*)
+static void canTxTask(void *)
 {
     while (1)
     {
@@ -70,7 +71,8 @@ static void canTxTask(void*)
 // ================= API =================
 bool canRxPop(CANRxItem &out)
 {
-    if (rxTail == rxHead) return false;
+    if (rxTail == rxHead)
+        return false;
 
     out = rxBuf[rxTail];
     rxTail = (rxTail + 1) % RX_SIZE;
@@ -80,7 +82,8 @@ bool canRxPop(CANRxItem &out)
 bool canTxPush(const twai_message_t &msg)
 {
     uint16_t next = (txHead + 1) % TX_SIZE;
-    if (next == txTail) return false;
+    if (next == txTail)
+        return false;
 
     txBuf[txHead] = msg;
     txHead = next;
