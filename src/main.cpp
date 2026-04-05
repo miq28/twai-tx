@@ -86,4 +86,7 @@ void loop()
         gvretLoop();
         break;
     }
+
+    // ===== TX handing
+    transportFlush();
 }

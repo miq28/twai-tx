@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <string.h>
 #include "debug.h"
+#include "transport.h"
 
 namespace
 {
@@ -105,8 +106,7 @@ namespace
         }
 
         frame.pkt.flags = item.msg.flags;
-        Serial.write((uint8_t *)&frame, sizeof(frame));
-        // DEBUGPORT.write((uint8_t *)&frame, sizeof(frame));
+        transportWrite((uint8_t *)&frame, sizeof(frame));
     }
 }
 

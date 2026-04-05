@@ -3,6 +3,7 @@
 #include "can_bus.h"
 #include <Arduino.h>
 #include "debug.h"
+#include "transport.h"
 
 static bool binaryMode = false;
 static uint32_t lastActivityMs = 0;
@@ -59,7 +60,7 @@ static uint32_t build_int = 0;
 static void sendKeepAlive()
 {
     uint8_t resp[] = {0xF1, 9, 0xDE, 0xAD};
-    Serial.write(resp, sizeof(resp));
+    transportWrite(resp, sizeof(resp));
 }
 
 static void sendDeviceInfo()
@@ -73,7 +74,7 @@ static void sendDeviceInfo()
         0,          // auto log
         0           // single wire
     };
-    Serial.write(resp, sizeof(resp));
+    transportWrite(resp, sizeof(resp));
 }
 
 static void sendCANConfig()
@@ -105,7 +106,7 @@ static void sendCANConfig()
     resp[10] = 0;
     resp[11] = 0;
 
-    Serial.write(resp, 12);
+    transportWrite(resp, 12);
 }
 
 // ===== COMMAND HANDLER =====
@@ -126,7 +127,7 @@ static void handleCommand(uint8_t cmd)
             (uint8_t)(now >> 16),
             (uint8_t)(now >> 24)};
 
-        Serial.write(resp, sizeof(resp));
+        transportWrite(resp, sizeof(resp));
         state = IDLE;
         break;
     }
@@ -161,7 +162,7 @@ static void handleCommand(uint8_t cmd)
             12,
             1 // number of CAN buses (you have 1)
         };
-        Serial.write(resp, sizeof(resp));
+        transportWrite(resp, sizeof(resp));
         state = IDLE;
         break;
     }
@@ -224,7 +225,7 @@ static void handleSetupCAN(uint8_t b)
         for (int i = 0; i < 15; i++)
             resp[2 + i] = 0;
 
-        Serial.write(resp, sizeof(resp));
+        transportWrite(resp, sizeof(resp));
 
         state = IDLE;
         break;
@@ -382,7 +383,7 @@ void gvretLoop()
             for (int i = 0; i < dlc; i++) buf[idx++] = m.data[i];
 
             buf[idx++] = 0;
-            Serial.write(buf, idx);
+            transportWrite(buf, idx);
         }
     }
 }
