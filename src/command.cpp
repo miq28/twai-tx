@@ -103,7 +103,7 @@ bool parseCommand(char *buf, Command &cmd)
         return true;
     }
 
-    if (buf[0] == 'f')
+    if (buf[0] == 'f' && isdigit(buf[1]))
     {
         cmd.type = CMD_SET_FPS;
         cmd.value_int = atoi(buf + 1);
