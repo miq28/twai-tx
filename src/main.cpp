@@ -16,7 +16,7 @@ const char *resetReasonToStr(esp_reset_reason_t r)
     case ESP_RST_EXT:
         return "EXTERNAL (EN pin)"; // External pin - not applicable for ESP32
     case ESP_RST_SW:
-        return "SOFTWARE";
+        return "SOFTWARE"; // Software reset via esp_restart
     case ESP_RST_PANIC:
         return "PANIC"; // Exception/panic/crash
     case ESP_RST_INT_WDT:
@@ -32,9 +32,17 @@ const char *resetReasonToStr(esp_reset_reason_t r)
     case ESP_RST_SDIO:
         return "SDIO"; // Reset over SDIO
     case ESP_RST_USB:
-        return "USB";
+        return "USB"; // Reset by USB peripheral
+    case ESP_RST_JTAG:
+        return "JTAG"; // Reset by JTAG
+    case ESP_RST_EFUSE:
+        return "EFUSE"; // Reset due to efuse error
+    case ESP_RST_PWR_GLITCH:
+        return "POWER_GLITCH"; // Reset due to power glitch detected
+    case ESP_RST_CPU_LOCKUP:
+        return "CPU_LOCKUP"; // Reset due to CPU lock up (double exception)
     default:
-        return "UNKNOWN";
+        return "UNKNOWN"; // Reset reason can not be determined
     }
 }
 
