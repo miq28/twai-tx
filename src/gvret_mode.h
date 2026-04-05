@@ -1,4 +1,5 @@
 #pragma once
+#include <stdint.h>
 
-void gvretInit();
 void gvretLoop();
+void processIncomingByte(uint8_t b);

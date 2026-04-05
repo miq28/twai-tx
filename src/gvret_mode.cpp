@@ -1,8 +1,7 @@
 #include "gvret_mode.h"
-#include "can_driver.h"
 #include "app_mode.h"
+#include "can_bus.h"
 #include <Arduino.h>
-#include "gvret_stream.h"
 #include "rs485.h"
 
 static bool binaryMode = false;
@@ -11,32 +10,23 @@ static bool savvyConnected = false;
 static twai_message_t txMsg;
 
 // ===== STATE MACHINE =====
-enum GVRET_STATE
-{
-    IDLE,
-    GET_COMMAND,
-    SETUP_CANBUS,
-    BUILD_CAN_FRAME
-};
 
-/*
-enum STATE {
+enum GVRET_STATE {
     IDLE,
     GET_COMMAND,
     BUILD_CAN_FRAME,
-    TIME_SYNC,
-    GET_DIG_INPUTS,
-    GET_ANALOG_INPUTS,
-    SET_DIG_OUTPUTS,
+    // TIME_SYNC,
+    // GET_DIG_INPUTS,
+    // GET_ANALOG_INPUTS,
+    // SET_DIG_OUTPUTS,
     SETUP_CANBUS,
-    GET_CANBUS_PARAMS,
-    GET_DEVICE_INFO,
-    SET_SINGLEWIRE_MODE,
-    SET_SYSTYPE,
-    ECHO_CAN_FRAME,
-    SETUP_EXT_BUSES
+    // GET_CANBUS_PARAMS,
+    // GET_DEVICE_INFO,
+    // SET_SINGLEWIRE_MODE,
+    // SET_SYSTYPE,
+    // ECHO_CAN_FRAME,
+    // SETUP_EXT_BUSES
 };
-*/
 
 enum GVRET_PROTOCOL
 {
@@ -361,6 +351,38 @@ void gvretLoop()
 
     if (CANDriver::isRunning() && savvyConnected)
     {
-        gvretStream();
+        CANRxItem item;
+
+        while (rxBufferPop(item))
+        {
+            const twai_message_t &m = item.msg;
+            uint8_t buf[32];
+            int idx = 0;
+
+            buf[idx++] = 0xF1;
+            buf[idx++] = 0x00;
+
+            uint32_t ts = item.timestamp;
+            buf[idx++] = ts & 0xFF;
+            buf[idx++] = ts >> 8;
+            buf[idx++] = ts >> 16;
+            buf[idx++] = ts >> 24;
+
+            uint32_t id = m.identifier;
+            if (m.extd) id |= (1UL << 31);
+
+            buf[idx++] = id & 0xFF;
+            buf[idx++] = id >> 8;
+            buf[idx++] = id >> 16;
+            buf[idx++] = id >> 24;
+
+            uint8_t dlc = m.data_length_code & 0xF;
+            buf[idx++] = dlc;
+
+            for (int i = 0; i < dlc; i++) buf[idx++] = m.data[i];
+
+            buf[idx++] = 0;
+            Serial.write(buf, idx);
+        }
     }
 }

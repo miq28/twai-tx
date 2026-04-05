@@ -30,3 +30,10 @@ struct Command
     char str[16];
     bool value_bool;
 };
+
+struct InputContext
+{
+};
+
+void dispatchByte(InputContext &ctx, uint8_t b);
+void cliProcessByte(uint8_t b);

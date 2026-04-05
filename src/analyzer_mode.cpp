@@ -1,41 +1,108 @@
 #include "analyzer_mode.h"
-#include "can_rx_buffer.h"
-#include "can_encoder.h"
-#include "app_mode.h"
-#include "ascii_encoder.h"   // ✅ allowed (same module group)
+#include "can_bus.h"
+#include <Arduino.h>
+#include <string.h>
 
-static AnalyzerConfig cfg;
+namespace
+{
+struct AnalyzerConfig
+{
+    AnalyzerFormat format;
+    bool filterEnabled;
+    uint32_t filterId;
+};
+
+struct __attribute__((packed)) CANPacketHeader
+{
+    uint16_t sync;
+    uint8_t version;
+};
+
+struct __attribute__((packed)) CANPacket
+{
+    uint32_t ts;
+    uint32_t id;
+    uint8_t dlc;
+    uint8_t data[8];
+    uint32_t flags;
+};
+
+struct __attribute__((packed)) CANFrameWire
+{
+    CANPacketHeader header;
+    CANPacket pkt;
+};
+
+constexpr uint16_t CAN_SYNC = 0xAA55;
+constexpr uint8_t CAN_VER = 1;
+
+AnalyzerConfig analyzerCfg;
+
+void encodeAscii(const CANRxItem &item)
+{
+    const twai_message_t &msg = item.msg;
+    uint32_t sec = item.timestamp / 1000000UL;
+    uint32_t usec = item.timestamp % 1000000UL;
+
+    if (msg.extd) Serial.printf("%lu.%06lu ID:%08lX ", sec, usec, msg.identifier);
+    else Serial.printf("%lu.%06lu ID:%03lX ", sec, usec, msg.identifier);
+
+    uint8_t dlc = msg.data_length_code;
+    if (dlc > 8) dlc = 8;
+    Serial.printf("DLC:%u ", dlc);
+
+    if (msg.extd) Serial.print("EXT ");
+    if (msg.rtr) Serial.print("RTR ");
+
+    Serial.print("DATA:");
+    for (uint8_t i = 0; i < dlc; i++)
+    {
+        Serial.printf(" %02X", msg.data[i]);
+    }
+    Serial.print("\n");
+}
+
+void encodeBinary(const CANRxItem &item)
+{
+    CANFrameWire frame = {};
+    frame.header.sync = CAN_SYNC;
+    frame.header.version = CAN_VER;
+    frame.pkt.ts = item.timestamp;
+    frame.pkt.id = item.msg.identifier;
+    frame.pkt.dlc = item.msg.data_length_code;
+    memcpy(frame.pkt.data, item.msg.data, sizeof(frame.pkt.data));
+    frame.pkt.flags = item.msg.flags;
+    Serial.write((uint8_t *)&frame, sizeof(frame));
+}
+}
 
 void analyzerInit()
 {
-    cfg.encoder = &asciiEncoder;   // ✅ default here
-    cfg.filterEnabled = false;
-    cfg.filterId = 0;
+    analyzerCfg.format = ANALYZER_FORMAT_ASCII;
+    analyzerCfg.filterEnabled = false;
+    analyzerCfg.filterId = 0;
 }
 
-void analyzerSetEncoder(ICanEncoder* enc)
+void analyzerSetFormat(AnalyzerFormat format)
 {
-    cfg.encoder = enc;
+    analyzerCfg.format = format;
 }
 
 void analyzerSetFilter(bool enable, uint32_t id)
 {
-    cfg.filterEnabled = enable;
-    cfg.filterId = id;
+    analyzerCfg.filterEnabled = enable;
+    analyzerCfg.filterId = id;
 }
 
 void analyzerLoop()
 {
-    if (!cfg.encoder) return;
-
     CANRxItem item;
 
     while (rxBufferPop(item))
     {
-        if (cfg.filterEnabled &&
-            item.msg.identifier != cfg.filterId)
-            continue;
+        if (analyzerCfg.filterEnabled && item.msg.identifier != analyzerCfg.filterId) continue;
 
-        cfg.encoder->encode(item);
+        if (analyzerCfg.format == ANALYZER_FORMAT_BINARY) encodeBinary(item);
+        else encodeAscii(item);
     }
 }

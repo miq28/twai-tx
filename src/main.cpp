@@ -1,17 +1,15 @@
 #include <Arduino.h>
-#include "can_driver.h"
-#include "transport_serial.h"
+#include "can_bus.h"
+#include "transport.h"
 #include "app_mode.h"
-#include "generator_mode.h"
-#include "mode_ecu.h"
-#include "can_rx_task.h"
+#include "traffic_modes.h"
 #include "analyzer_mode.h"
 #include "gvret_mode.h"
 #include "rs485.h"
 
 void setup()
 {
-    transportSerialInit();
+    transportInit();
     initAppState();
     RS485.begin(2000000);
     CANDriver::init(500000, false);
@@ -21,7 +19,7 @@ void setup()
 
 void loop()
 {
-    transportSerialProcess();   // always run
+    transportProcess();
 
     switch (appState.mode)
     {

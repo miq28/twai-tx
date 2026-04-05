@@ -1,10 +1,10 @@
 #include <Arduino.h>
-#include "transport_serial.h"
-#include "input_dispatcher.h"
+#include "transport.h"
+#include "command.h"
 
 static InputContext serialCtx;
 
-void transportSerialInit()
+void transportInit()
 {
 #if defined(WEACT_STUDIO_CAN485_V1)
     Serial.begin(2000000);
@@ -15,7 +15,7 @@ void transportSerialInit()
     Serial.println("Type 'help' for commands");
 }
 
-void transportSerialProcess()
+void transportProcess()
 {
     while (Serial.available())
     {

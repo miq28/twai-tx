@@ -1,14 +1,13 @@
 #pragma once
-#include "can_encoder.h"
+#include <stdint.h>
 
-struct AnalyzerConfig
+enum AnalyzerFormat
 {
-    ICanEncoder* encoder;
-    bool filterEnabled;
-    uint32_t filterId;
+    ANALYZER_FORMAT_ASCII,
+    ANALYZER_FORMAT_BINARY
 };
 
 void analyzerInit();
 void analyzerLoop();
-void analyzerSetEncoder(ICanEncoder* enc);
+void analyzerSetFormat(AnalyzerFormat format);
 void analyzerSetFilter(bool enable, uint32_t id);
