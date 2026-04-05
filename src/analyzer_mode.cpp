@@ -2,6 +2,7 @@
 #include "can_bus.h"
 #include <Arduino.h>
 #include <string.h>
+#include "debug.h"
 
 namespace
 {
@@ -41,25 +42,32 @@ AnalyzerConfig analyzerCfg;
 void encodeAscii(const CANRxItem &item)
 {
     const twai_message_t &msg = item.msg;
-    uint32_t sec = item.timestamp / 1000000UL;
-    uint32_t usec = item.timestamp % 1000000UL;
 
-    if (msg.extd) Serial.printf("%lu.%06lu ID:%08lX ", sec, usec, msg.identifier);
-    else Serial.printf("%lu.%06lu ID:%03lX ", sec, usec, msg.identifier);
+    uint32_t sec  = item.timestamp / 1000000UL;
+    uint32_t usec = item.timestamp % 1000000UL;
 
     uint8_t dlc = msg.data_length_code;
     if (dlc > 8) dlc = 8;
-    Serial.printf("DLC:%u ", dlc);
 
-    if (msg.extd) Serial.print("EXT ");
-    if (msg.rtr) Serial.print("RTR ");
+    char buf[128];
+    int idx = 0;
 
-    Serial.print("DATA:");
+    idx += snprintf(buf + idx, sizeof(buf) - idx,
+        msg.extd ? "%lu.%06lu ID:%08lX DLC:%u "
+                 : "%lu.%06lu ID:%03lX DLC:%u ",
+        sec, usec, msg.identifier, dlc);
+
+    if (msg.extd) idx += snprintf(buf + idx, sizeof(buf) - idx, "EXT ");
+    if (msg.rtr)  idx += snprintf(buf + idx, sizeof(buf) - idx, "RTR ");
+
+    idx += snprintf(buf + idx, sizeof(buf) - idx, "DATA:");
+
     for (uint8_t i = 0; i < dlc; i++)
-    {
-        Serial.printf(" %02X", msg.data[i]);
-    }
-    Serial.print("\n");
+        idx += snprintf(buf + idx, sizeof(buf) - idx, " %02X", msg.data[i]);
+
+    idx += snprintf(buf + idx, sizeof(buf) - idx, "\n");
+
+    DEBUG("%s", buf);   // single output call via your macro
 }
 
 void encodeBinary(const CANRxItem &item)

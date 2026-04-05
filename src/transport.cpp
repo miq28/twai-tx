@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "transport.h"
 #include "command.h"
+#include "debug.h"
 
 static InputContext serialCtx;
 
@@ -12,14 +13,22 @@ void transportInit()
     Serial.begin(1000000);
 #endif
     delay(100);
-    Serial.println("Type 'help' for commands");
+    DEBUG_PRINTLN("Type 'help' for commands");
 }
 
 void transportProcess()
 {
+    // ===== USB SERIAL =====
     while (Serial.available())
     {
         uint8_t b = Serial.read();
+        dispatchByte(serialCtx, b);
+    }
+
+    // ===== RS485 =====
+    while (RS485.available())
+    {
+        uint8_t b = RS485.read();
         dispatchByte(serialCtx, b);
     }
 }

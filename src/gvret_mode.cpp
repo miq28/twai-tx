@@ -2,7 +2,7 @@
 #include "app_mode.h"
 #include "can_bus.h"
 #include <Arduino.h>
-#include "rs485.h"
+#include "debug.h"
 
 static bool binaryMode = false;
 static uint32_t lastActivityMs = 0;
@@ -149,7 +149,7 @@ static void handleCommand(uint8_t cmd)
     case PROTO_KEEPALIVE: // 9
         lastActivityMs = millis();
         savvyConnected = true;
-        RS485.printf("SavvyCan keep-alive received, time: %lu\n", millis());
+        DEBUG_PRINTLN("SavvyCan keep-alive received");
         sendKeepAlive();
         state = IDLE;
         break;
@@ -303,11 +303,11 @@ void processIncomingByte(uint8_t b)
             lastActivityMs = millis();
             // enter binary mode (no response required)
             binaryMode = true;
-            RS485.println("Entering binary mode");
+            DEBUG_PRINTLN("Entering binary mode");
             if (appState.mode != MODE_SAVVYCAN)
             {
                 appState.mode = MODE_SAVVYCAN;
-                RS485.println("Mode switched to SAVVYCAN");
+                DEBUG_PRINTLN("Mode switched to SAVVYCAN");
             }
             return;
         }
@@ -344,9 +344,9 @@ void gvretLoop()
     {
         savvyConnected = false;
         binaryMode = false;
-        RS485.println("SavvyCan connection lost, exiting binary mode");
+        DEBUG_PRINTLN("SavvyCan connection lost, exiting binary mode");
         appState.mode = MODE_ANALYZER;
-        RS485.println("Mode switched to ANALYZER");
+        DEBUG_PRINTLN("Mode switched to ANALYZER");
     }
 
     if (CANDriver::isRunning() && savvyConnected)

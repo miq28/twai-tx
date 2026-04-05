@@ -6,7 +6,7 @@
 #include "app_mode.h"
 #include "can_bus.h"
 #include "gvret_mode.h"
-#include "rs485.h"
+#include "debug.h"
 
 namespace
 {
@@ -229,7 +229,7 @@ void handleCommand(const Command &cmd)
         CANDriver::reinit(CANDriver::getCurrentBaud(), cmd.value_bool);
         break;
     case CMD_STATUS:
-        Serial.printf("Mode:%d Baud:%lu, Running:%s listen-only:%s FPS:%d\n",
+        DEBUG("Mode:%d Baud:%lu, Running:%s listen-only:%s FPS:%d\n",
                       appState.mode,
                       CANDriver::getCurrentBaud(),
                       CANDriver::isRunning() ? "true" : "false",
@@ -238,54 +238,54 @@ void handleCommand(const Command &cmd)
         break;
     case CMD_SET_EXTENDED:
         canFrameCfg.extended = (cmd.value_int == 1);
-        Serial.printf("[CAN] Frame mode: %s\n",
+        DEBUG("[CAN] Frame mode: %s\n",
                       canFrameCfg.extended ? "EXTENDED (29-bit)" : "STANDARD (11-bit)");
         break;
     case CMD_RESET:
         initAppState();
-        Serial.println("*** STATES RESET - states only ***");
+        DEBUG_PRINTLN("*** STATES RESET - states only ***");
         break;
     case CMD_HELP:
-        Serial.println("\n=== COMMANDS ===");
+        DEBUG_PRINTLN("\n=== COMMANDS ===");
         for (size_t i = 0; i < sizeof(commandTable) / sizeof(commandTable[0]); i++)
         {
-            Serial.printf("%-15s (%s) : %s\n",
+            DEBUG("%-15s (%s) : %s\n",
                           commandTable[i].name,
                           commandTable[i].alias,
                           commandTable[i].help);
         }
-        Serial.println("=================\n");
+        DEBUG_PRINTLN("=================\n");
         break;
     case CMD_SET_FORMAT:
         if (strcmp(cmd.str, "binary") == 0)
         {
             analyzerSetFormat(ANALYZER_FORMAT_BINARY);
-            Serial.println("[FMT] binary");
+            DEBUG_PRINTLN("[FMT] binary");
         }
         else if (strcmp(cmd.str, "ascii") == 0)
         {
             analyzerSetFormat(ANALYZER_FORMAT_ASCII);
-            Serial.println("[FMT] ascii");
+            DEBUG_PRINTLN("[FMT] ascii");
         }
         else
         {
-            Serial.println("[FMT] unknown (use: format binary | format ascii)");
+            DEBUG_PRINTLN("[FMT] unknown (use: format binary | format ascii)");
         }
         break;
     case CMD_SET_FILTER:
         if (!cmd.value_bool)
         {
             analyzerSetFilter(false, 0);
-            Serial.println("[FILTER] off");
+            DEBUG_PRINTLN("[FILTER] off");
         }
         else
         {
             analyzerSetFilter(true, cmd.value_u32);
-            Serial.printf("[FILTER] ID:0x%lX\n", cmd.value_u32);
+            DEBUG("[FILTER] ID:0x%lX\n", cmd.value_u32);
         }
         break;
     default:
-        Serial.println("COMMAND VALID BUT HANDLE NOT AVAILABLE! check source code'");
+        DEBUG_PRINTLN("COMMAND VALID BUT HANDLE NOT AVAILABLE! check source code'");
         break;
     }
 }
@@ -318,7 +318,7 @@ void dispatchByte(InputContext &, uint8_t b)
         {
             appState.mode = MODE_ANALYZER;
             escapeCount = 0;
-            RS485.println("[ESC] Exit SAVVYCAN mode");
+            DEBUG_PRINTLN("[ESC] Exit SAVVYCAN mode");
             return;
         }
     }
@@ -330,7 +330,7 @@ void dispatchByte(InputContext &, uint8_t b)
     if (appState.mode != MODE_SAVVYCAN && (b == 0xE7 || b == 0xF1))
     {
         appState.mode = MODE_SAVVYCAN;
-        RS485.println("[AUTO] Enter SAVVYCAN mode");
+        DEBUG_PRINTLN("[AUTO] Enter SAVVYCAN mode");
     }
 
     if (appState.mode == MODE_SAVVYCAN) processIncomingByte(b);

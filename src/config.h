@@ -1,5 +1,6 @@
 #pragma once
 #include <driver/gpio.h>
+#include "debug.h"
 
 #if defined(SPARKLE_IOT_XH_S3E_N16R8)
 #define CAN_TX GPIO_NUM_7
@@ -53,7 +54,7 @@
 #define CAN_DEBUG 1
 
 #if CAN_DEBUG
-#define CAN_LOG(...) Serial.printf(__VA_ARGS__)
+#define CAN_LOG(...) DEBUG(__VA_ARGS__)
 #else
 #define CAN_LOG(...)
 #endif

@@ -3,6 +3,7 @@
 #include "can_bus.h"
 #include <Arduino.h>
 #include <esp_timer.h>
+#include "debug.h"
 
 namespace
 {
@@ -71,7 +72,7 @@ void generatorLoop()
     if (now - lastFpsUs >= 1000000ULL)
     {
         lastFpsUs = now;
-        Serial.printf("FPS: %lu\n", frameCount);
+        DEBUG("FPS: %lu\n", frameCount);
         frameCount = 0;
     }
 }

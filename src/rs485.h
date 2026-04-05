@@ -2,7 +2,7 @@
 // PURPOSE: RS485 debug output interface.
 
 #pragma once
-#include <Arduino.h>
+#include <Arduino.h> 
 
 class RS485Port
 {
@@ -12,6 +12,8 @@ public:
     void println(const char *str);
     void printf(const char *format, ...);
     void write(const uint8_t *data, size_t len);
+    int available();
+    int read();
 
 private:
     void setTX();

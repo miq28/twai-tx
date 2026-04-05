@@ -10,7 +10,7 @@ void initAppState()
     // ===== APP STATE =====
     appState.running = true;
 #if defined(WEACT_STUDIO_CAN485_V1)
-    appState.mode = MODE_SAVVYCAN;
+    appState.mode = MODE_GENERATOR;
 #else
     appState.mode = MODE_GENERATOR;
 #endif

@@ -89,3 +89,13 @@ int rs485_vprintf(const char *fmt, va_list args)
     }
     return len;
 }
+
+int RS485Port::available()
+{
+    return RS485Serial.available();
+}
+
+int RS485Port::read()
+{
+    return RS485Serial.read();
+}
