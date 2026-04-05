@@ -13,7 +13,7 @@ void setup()
 {
     transportSerialInit();
     initAppState();
-    RS485.begin(1000000);
+    RS485.begin(2000000);
     CANDriver::init(500000, false);
     startCanRxTask();
     analyzerInit();
