@@ -5,16 +5,53 @@
 #include "traffic_modes.h"
 #include "analyzer_mode.h"
 #include "gvret_mode.h"
-#include "rs485.h"
+#include "debug.h"
+
+const char *resetReasonToStr(esp_reset_reason_t r)
+{
+    switch (r)
+    {
+    case ESP_RST_POWERON:
+        return "POWERON"; // Power on or RST pin toggled
+    case ESP_RST_EXT:
+        return "EXTERNAL (EN pin)"; // External pin - not applicable for ESP32
+    case ESP_RST_SW:
+        return "SOFTWARE";
+    case ESP_RST_PANIC:
+        return "PANIC"; // Exception/panic/crash
+    case ESP_RST_INT_WDT:
+        return "INT WDT"; // Interrupt watchdog (software or hardware)
+    case ESP_RST_TASK_WDT:
+        return "TASK WDT"; // Task watchdog
+    case ESP_RST_WDT:
+        return "OTHER WDT"; // Other watchdog
+    case ESP_RST_DEEPSLEEP:
+        return "DEEPSLEEP"; // Reset after exiting deep sleep mode
+    case ESP_RST_BROWNOUT:
+        return "BROWNOUT"; // Brownout reset (software or hardware)
+    case ESP_RST_SDIO:
+        return "SDIO"; // Reset over SDIO
+    case ESP_RST_USB:
+        return "USB";
+    default:
+        return "UNKNOWN";
+    }
+}
 
 void setup()
 {
+    RS485.begin(2000000);
+    DEBUG("\n=== BOOT ===\n");
+    esp_reset_reason_t r = esp_reset_reason();
+    DEBUG("Reset reason: %s (%d)\n",
+          resetReasonToStr(r), r);
+    DEBUG("Free heap before setup: %u\n", ESP.getFreeHeap());
     transportInit();
     initAppState();
-    RS485.begin(2000000);
     CANDriver::init(500000, false);
     startCanRxTask();
     analyzerInit();
+    DEBUG("Free heap after setup: %u\n", ESP.getFreeHeap());
 }
 
 void loop()
