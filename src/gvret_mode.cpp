@@ -8,13 +8,15 @@
 static bool binaryMode = false;
 static uint32_t lastActivityMs = 0;
 static bool savvyConnected = false;
+static twai_message_t txMsg;
 
 // ===== STATE MACHINE =====
 enum GVRET_STATE
 {
     IDLE,
     GET_COMMAND,
-    SETUP_CANBUS
+    SETUP_CANBUS,
+    BUILD_CAN_FRAME
 };
 
 /*
@@ -174,6 +176,11 @@ static void handleCommand(uint8_t cmd)
         break;
     }
 
+    case PROTO_BUILD_CAN_FRAME: // 0
+        state = BUILD_CAN_FRAME;
+        step = 0;
+        break;
+
     default:
         state = IDLE;
         break;
@@ -237,6 +244,63 @@ static void handleSetupCAN(uint8_t b)
     step++;
 }
 
+// ===== BUILD CAN FRAME =====
+
+static uint8_t out_bus = 0;
+
+static void handleBuildCAN(uint8_t b)
+{
+    switch (step)
+    {
+    case 0: txMsg.identifier = b; break;
+    case 1: txMsg.identifier |= b << 8; break;
+    case 2: txMsg.identifier |= b << 16; break;
+
+    case 3:
+        txMsg.identifier |= b << 24;
+
+        if (txMsg.identifier & (1UL << 31))
+        {
+            txMsg.identifier &= 0x7FFFFFFF;
+            txMsg.extd = 1;
+        }
+        else
+        {
+            txMsg.extd = 0;
+        }
+        break;
+
+    case 4:
+        out_bus = b & 0x3;   // not used, but required to consume byte
+        break;
+
+    case 5:
+    {
+        uint8_t dlc = b & 0xF;
+        if (dlc > 8) dlc = 8;
+
+        txMsg.data_length_code = dlc;
+        txMsg.rtr = 0;
+        break;
+    }
+
+    default:
+        if (step < (6 + txMsg.data_length_code))
+        {
+            txMsg.data[step - 6] = b;
+        }
+        else
+        {
+            // last byte = checksum → ignore
+            CANDriver::send(txMsg);   // ✅ REAL FIX
+            state = IDLE;
+        }
+        break;
+    }
+
+    step++;
+}
+
 // ===== BYTE PARSER =====
 
 void processIncomingByte(uint8_t b)
@@ -269,6 +333,10 @@ void processIncomingByte(uint8_t b)
 
     case SETUP_CANBUS:
         handleSetupCAN(b);
+        break;
+
+    case BUILD_CAN_FRAME:
+        handleBuildCAN(b);
         break;
 
     default:
