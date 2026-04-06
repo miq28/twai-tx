@@ -26,15 +26,14 @@ static WiFiUDP udp;
 static IPAddress broadcastAddr(255, 255, 255, 255);
 static uint32_t lastBroadcast = 0;
 #define DISCOVERY_PORT 17222
+static uint32_t lastDiscoveryReply = 0;
+static IPAddress lastDiscoveryIP;
 
 // request magic (what you already broadcast)
-static const uint8_t DISCOVERY_REQ[4] = {0x1C, 0xEF, 0xAC, 0xED};
+static const uint8_t GVRET_MAGIC[4] = {0x1C, 0xEF, 0xAC, 0xED};
 
-// simple response (GVRET-style minimal)
-static const uint8_t DISCOVERY_RESP[8] = {
-    0x1C, 0xEF, 0xAC, 0xED, // same magic
-    0x47, 0x56, 0x52, 0x54  // "GVRT" identifier
-};
+// GVRET device type
+#define DEVICE_TYPE_WIFI 0x01
 
 static uint8_t udpRxBuf[32];
 
@@ -132,6 +131,41 @@ static void setupWiFiEvents()
     }, ARDUINO_EVENT_WIFI_STA_GOT_IP);
 }
 
+static size_t buildGVRETResponse(uint8_t* buf)
+{
+    uint8_t* p = buf;
+
+    // magic
+    memcpy(p, GVRET_MAGIC, 4); p += 4;
+
+    // protocol version
+    *p++ = 0x01;
+
+    // device type (WiFi)
+    *p++ = DEVICE_TYPE_WIFI;
+
+    // IP
+    IPAddress ip = WiFi.localIP();
+    *p++ = ip[0];
+    *p++ = ip[1];
+    *p++ = ip[2];
+    *p++ = ip[3];
+
+    // port (big endian)
+    uint16_t port = TELNET_PORT;
+    *p++ = (port >> 8) & 0xFF;
+    *p++ = (port & 0xFF);
+
+    // name (null-terminated)
+    const char* name = MDNS_NAME;
+    size_t nameLen = strlen(name);
+    memcpy(p, name, nameLen);
+    p += nameLen;
+    *p++ = 0x00;
+
+    return (p - buf);
+}
+
 // ===== TCP SERVER =====
 static void setupServer()
 {
@@ -198,7 +232,7 @@ void netLoop()
             lastBroadcast = now;
 
             udp.beginPacket(broadcastAddr, DISCOVERY_PORT);
-            udp.write(DISCOVERY_REQ, sizeof(DISCOVERY_REQ));
+            udp.write(GVRET_MAGIC, 4);
             udp.endPacket();
         }
     }
@@ -208,21 +242,38 @@ void netLoop()
     if (packetSize > 0)
     {
         int len = udp.read(udpRxBuf, sizeof(udpRxBuf));
-        if (len >= 4)
+
+        if (len >= 4 && memcmp(udpRxBuf, GVRET_MAGIC, 4) == 0)
         {
-            // check magic
-            if (memcmp(udpRxBuf, DISCOVERY_REQ, 4) == 0)
+            // ===== IGNORE IF ALREADY CONNECTED =====
+            // ===== but allow same client reconnect =====
+            if (netClientConnected() && udp.remoteIP() != client->remoteIP())
             {
-                DEBUG("Discovery request from %s\n",
-                      udp.remoteIP().toString().c_str());
-
-                // ===== SEND RESPONSE =====
-                udp.beginPacket(udp.remoteIP(), udp.remotePort());
-                udp.write(DISCOVERY_RESP, sizeof(DISCOVERY_RESP));
-                udp.endPacket();
-
-                DEBUG("Discovery response sent\n");
+                return;
             }
+
+            IPAddress rip = udp.remoteIP();
+            uint32_t now = millis();
+
+            // ===== RATE LIMIT =====
+            if (rip == lastDiscoveryIP && (now - lastDiscoveryReply) < 1000)
+            {
+                return; // ignore spam
+            }
+
+            lastDiscoveryIP = rip;
+            lastDiscoveryReply = now;
+
+            DEBUG("GVRET discovery from %s\n", rip.toString().c_str());
+
+            uint8_t resp[64];
+            size_t respLen = buildGVRETResponse(resp);
+
+            udp.beginPacket(rip, udp.remotePort());
+            udp.write(resp, respLen);
+            udp.endPacket();
+
+            DEBUG("GVRET response sent\n");
         }
     }
 }
