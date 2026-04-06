@@ -21,6 +21,8 @@ namespace
     uint16_t speed = 0;
 }
 
+static const char VIN[] = "WP0ZZZ99ZTS392124"; // 17 chars
+
 bool fcReceived;
 
 struct IsoTpTxState
@@ -34,12 +36,45 @@ struct IsoTpTxState
     uint16_t offset;
     uint8_t seq;
 
-    uint32_t lastSendMs;
+    uint32_t lastSendUs;
 
+    // ===== FLOW CONTROL =====
     bool fcReceived;
+    uint8_t blockSize; // BS
+    uint8_t stMin;     // STmin (raw)
+    uint8_t bsCounter; // frames sent in current block
 };
 
 static IsoTpTxState isoTx = {};
+
+struct IsoTpRxState
+{
+    bool active;
+
+    uint32_t id;       // sender (tester 0x7E0)
+    uint16_t expected; // total length
+    uint16_t len;
+
+    uint8_t nextSeq;
+    uint8_t buf[256];
+};
+
+static IsoTpRxState isoRx = {};
+
+static void sendFlowControl(uint32_t id)
+{
+    twai_message_t fc = {};
+    fc.identifier = id;
+    fc.extd = 0;
+    fc.rtr = 0;
+    fc.data_length_code = 8;
+
+    fc.data[0] = 0x30; // CTS
+    fc.data[1] = 0x00; // BS (0 = unlimited)
+    fc.data[2] = 0x00; // STmin
+
+    CANDriver::send(fc);
+}
 
 static void sendOBDResponse(uint32_t id, const uint8_t *data, uint8_t len)
 {
@@ -64,17 +99,25 @@ static void sendOBDResponse(uint32_t id, const uint8_t *data, uint8_t len)
     // --- MULTI FRAME (start) ---
     isoTx.active = true;
     isoTx.fcReceived = false;
+
+    isoTx.blockSize = 0;
+    isoTx.stMin = 0;
+    isoTx.bsCounter = 0;
+
+    isoTx.lastSendUs = 0;
+
     isoTx.id = id;
     isoTx.data = data;
     isoTx.len = len;
-    isoTx.offset = 6; // first frame carries 6 bytes
+    isoTx.offset = 6;
     isoTx.seq = 1;
-    isoTx.lastSendMs = 0;
 
     // First Frame
     twai_message_t tx = {};
 
     tx.identifier = id;
+    tx.extd = 0;
+    tx.rtr = 0;
 
     tx.data[0] = 0x10 | ((len >> 8) & 0x0F); // FF
     tx.data[1] = len & 0xFF;
@@ -88,47 +131,68 @@ static void sendOBDResponse(uint32_t id, const uint8_t *data, uint8_t len)
 
 static bool handlePID(uint8_t mode, uint8_t pid, uint8_t *out, uint8_t &len)
 {
-    if (mode != 0x01)
-        return false;
-
-    switch (pid)
+    if (mode == 0x01)
     {
-        // case 0x00: // supported PIDs
-        //     out[0] = 0x41;
-        //     out[1] = 0x00;
-        //     out[2] = 0x08; // fake support bitmap
-        //     out[3] = 0x10;
-        //     out[4] = 0x00;
-        //     out[5] = 0x00;
-        //     len = 6;
-        //     return true;
+        switch (pid)
+        {
+            // case 0x00: // supported PIDs
+            //     out[0] = 0x41;
+            //     out[1] = 0x00;
+            //     out[2] = 0x08; // fake support bitmap
+            //     out[3] = 0x10;
+            //     out[4] = 0x00;
+            //     out[5] = 0x00;
+            //     len = 6;
+            //     return true;
 
-    case 0x00:
-        for (int i = 0; i < 20; i++)
-            out[i] = i;
+        case 0x00:
+            for (int i = 0; i < 20; i++)
+                out[i] = i;
 
-        len = 20;
-        return true;
+            len = 20;
+            return true;
 
-    case 0x0C: // RPM
-    {
-        uint16_t rpm = 3000;
-        uint16_t v = rpm * 4;
+        case 0x0C: // RPM
+        {
+            uint16_t rpm = 3000;
+            uint16_t v = rpm * 4;
 
-        out[0] = 0x41;
-        out[1] = 0x0C;
-        out[2] = v >> 8;
-        out[3] = v & 0xFF;
-        len = 4;
-        return true;
+            out[0] = 0x41;
+            out[1] = 0x0C;
+            out[2] = v >> 8;
+            out[3] = v & 0xFF;
+            len = 4;
+            return true;
+        }
+
+        case 0x0D: // speed
+            out[0] = 0x41;
+            out[1] = 0x0D;
+            out[2] = 88;
+            len = 3;
+            return true;
+        }
     }
 
-    case 0x0D: // speed
-        out[0] = 0x41;
-        out[1] = 0x0D;
-        out[2] = 88;
-        len = 3;
-        return true;
+    // ===== MODE 09 =====
+    else if (mode == 0x09)
+    {
+        switch (pid)
+        {
+        case 0x02: // VIN
+        {
+            // response: 49 02 01 + VIN (17 bytes)
+
+            out[0] = 0x49;
+            out[1] = 0x02;
+            out[2] = 0x01;
+
+            memcpy(&out[3], VIN, 17);
+
+            len = 20; // 3 + 17 → forces multi-frame
+            return true;
+        }
+        }
     }
 
     return false;
@@ -154,37 +218,62 @@ static void handleOBDRequest(const twai_message_t &rx)
     sendOBDResponse(0x7E8, payload, len);
 }
 
+static inline uint32_t decodeSTminUs(uint8_t st)
+{
+    if (st <= 0x7F)
+        return st * 1000; // ms → us
+
+    if (st >= 0xF1 && st <= 0xF9)
+        return (st - 0xF0) * 100; // 100–900 us
+
+    return 0; // reserved → no delay
+}
+
 static void processIsoTpTx()
 {
     if (!isoTx.active)
         return;
 
-    // wait for Flow Control
+    // wait FC
     if (!isoTx.fcReceived)
         return;
 
-    // simple pacing (no delay, no block)
-    if (millis() - isoTx.lastSendMs < 2)
+    uint32_t nowUs = micros();
+
+    // ===== STmin timing =====
+    uint32_t stMinUs = decodeSTminUs(isoTx.stMin);
+
+    if (stMinUs > 0 && (nowUs - isoTx.lastSendUs) < stMinUs)
         return;
 
-    if (isoTx.offset >= isoTx.len)
+    // ===== Block Size handling =====
+    if (isoTx.blockSize != 0 && isoTx.bsCounter >= isoTx.blockSize)
     {
-        isoTx.active = false;
+        // wait next FC
+        isoTx.fcReceived = false;
+        isoTx.bsCounter = 0;
+        DEBUG("[ISO-TP] Waiting next FC\n");
         return;
     }
 
-    twai_message_t tx = {};
+    // ===== Done =====
+    if (isoTx.offset >= isoTx.len)
+    {
+        isoTx.active = false;
+        DEBUG("[ISO-TP] TX complete\n");
+        return;
+    }
 
+    // ===== Send CF =====
+    twai_message_t tx = {};
     tx.identifier = isoTx.id;
 
-    // Consecutive Frame
     tx.data[0] = 0x20 | (isoTx.seq & 0x0F);
 
     uint8_t remaining = isoTx.len - isoTx.offset;
     uint8_t chunk = remaining > 7 ? 7 : remaining;
 
     memcpy(&tx.data[1], isoTx.data + isoTx.offset, chunk);
-
     tx.data_length_code = chunk + 1;
 
     CANDriver::send(tx);
@@ -194,7 +283,8 @@ static void processIsoTpTx()
     if (isoTx.seq > 0x0F)
         isoTx.seq = 1;
 
-    isoTx.lastSendMs = millis();
+    isoTx.lastSendUs = nowUs;
+    isoTx.bsCounter++;
 }
 
 void generatorLoop()
@@ -259,6 +349,82 @@ void generatorLoop()
     }
 }
 
+static void handleIsoTpRx(const twai_message_t &m)
+{
+    if (m.identifier != 0x7DF && m.identifier != 0x7E0)
+        return;
+
+    uint8_t pci = m.data[0] & 0xF0;
+
+    // ===== SINGLE FRAME =====
+    if (pci == 0x00)
+    {
+        uint8_t len = m.data[0];
+
+        handleOBDRequest(m); // reuse existing
+        return;
+    }
+
+    // ===== FIRST FRAME =====
+    if (pci == 0x10)
+    {
+        isoRx.active = true;
+        isoRx.id = m.identifier;
+
+        isoRx.expected = ((m.data[0] & 0x0F) << 8) | m.data[1];
+
+        memcpy(isoRx.buf, &m.data[2], 6);
+        isoRx.len = 6;
+        isoRx.nextSeq = 1;
+
+        // send FC immediately
+        sendFlowControl(0x7E8); // ECU → tester
+
+        return;
+    }
+
+    // ===== CONSECUTIVE FRAME =====
+    if (pci == 0x20 && isoRx.active)
+    {
+        uint8_t seq = m.data[0] & 0x0F;
+
+        if (seq != isoRx.nextSeq)
+        {
+            // sequence error → abort
+            isoRx.active = false;
+            DEBUG("[ISO-TP RX] seq error\n");
+            return;
+        }
+
+        uint8_t chunk = m.data_length_code - 1;
+
+        memcpy(isoRx.buf + isoRx.len, &m.data[1], chunk);
+        isoRx.len += chunk;
+
+        isoRx.nextSeq++;
+        if (isoRx.nextSeq > 0x0F)
+            isoRx.nextSeq = 0;
+
+        // complete
+        if (isoRx.len >= isoRx.expected)
+        {
+            isoRx.active = false;
+
+            // build fake CAN msg for existing handler
+            twai_message_t fake = {};
+            fake.identifier = 0x7DF;
+            fake.data_length_code = isoRx.len + 1;
+
+            fake.data[0] = isoRx.len;
+            memcpy(&fake.data[1], isoRx.buf, isoRx.len);
+
+            handleOBDRequest(fake);
+        }
+
+        return;
+    }
+}
+
 void ecuLoop()
 {
     if (!appState.running)
@@ -273,12 +439,20 @@ void ecuLoop()
         // --- detect Flow Control (from tester) ---
         if (m.identifier == 0x7E0 && (m.data[0] & 0xF0) == 0x30)
         {
-            Serial.println("FC received");
             isoTx.fcReceived = true;
+
+            isoTx.blockSize = m.data[1]; // BS
+            isoTx.stMin = m.data[2];     // STmin
+            isoTx.bsCounter = 0;
+
+            DEBUG("[ISO-TP] FC: BS=%u STmin=0x%02X\n",
+                  isoTx.blockSize, isoTx.stMin);
+
             continue;
         }
 
-        handleOBDRequest(m);
+        // handleOBDRequest(m);
+        handleIsoTpRx(m);
     }
 
     // NEW
