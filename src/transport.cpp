@@ -25,8 +25,18 @@ void transportDispatchByte(uint8_t b)
     dispatchByte(serialCtx, b);
 }
 
+void transportDispatchBuffer(const uint8_t *data, size_t len)
+{
+    for (size_t i = 0; i < len; i++)
+    {
+        dispatchByte(serialCtx, data[i]);
+    }
+}
+
 void transportProcess()
 {
+    uint8_t buf[64];
+
     // ===== USB SERIAL =====
     while (Serial.available())
     {

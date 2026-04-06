@@ -99,3 +99,17 @@ int RS485Port::read()
 {
     return RS485Serial.read();
 }
+
+size_t RS485Port::readBytes(uint8_t* buf, size_t maxLen)
+{
+    size_t n = 0;
+
+    while (available() && n < maxLen)
+    {
+        int b = read();
+        if (b < 0) break;
+        buf[n++] = (uint8_t)b;
+    }
+
+    return n;
+}

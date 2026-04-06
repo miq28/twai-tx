@@ -14,6 +14,7 @@ public:
     void write(const uint8_t *data, size_t len);
     int available();
     int read();
+    size_t readBytes(uint8_t* buf, size_t maxLen);
 
 private:
     void setTX();

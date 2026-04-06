@@ -12,3 +12,4 @@ void transportFlush();
 
 // ===== RX DISPATCH (NEW) =====
 void transportDispatchByte(uint8_t b);
+void transportDispatchBuffer(const uint8_t* data, size_t len);
