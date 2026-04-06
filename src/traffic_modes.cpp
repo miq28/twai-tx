@@ -23,6 +23,44 @@ namespace
 
 static const char VIN[] = "WP0ZZZ99ZTS392124"; // 17 chars
 
+static uint32_t buildPidBitmap01_20()
+{
+    uint32_t bm = 0;
+
+// helper macro: set bit for PID
+#define SET_PID(pid) bm |= (1UL << (0x20 - (pid)))
+
+    SET_PID(0x0C); // RPM
+    SET_PID(0x0D); // Speed
+
+#undef SET_PID
+
+    return bm;
+}
+
+static uint16_t encodeDTC(char type, uint16_t code)
+{
+    uint16_t t = 0;
+
+    switch (type)
+    {
+    case 'P':
+        t = 0;
+        break;
+    case 'C':
+        t = 1;
+        break;
+    case 'B':
+        t = 2;
+        break;
+    case 'U':
+        t = 3;
+        break;
+    }
+
+    return (t << 14) | (code & 0x3FFF);
+}
+
 bool fcReceived;
 
 struct IsoTpTxState
@@ -135,22 +173,20 @@ static bool handlePID(uint8_t mode, uint8_t pid, uint8_t *out, uint8_t &len)
     {
         switch (pid)
         {
-            // case 0x00: // supported PIDs
-            //     out[0] = 0x41;
-            //     out[1] = 0x00;
-            //     out[2] = 0x08; // fake support bitmap
-            //     out[3] = 0x10;
-            //     out[4] = 0x00;
-            //     out[5] = 0x00;
-            //     len = 6;
-            //     return true;
-
         case 0x00:
-            for (int i = 0; i < 20; i++)
-                out[i] = i;
+        {
+            uint32_t bm = buildPidBitmap01_20();
 
-            len = 20;
+            out[0] = 0x41;
+            out[1] = 0x00;
+            out[2] = (bm >> 24) & 0xFF;
+            out[3] = (bm >> 16) & 0xFF;
+            out[4] = (bm >> 8) & 0xFF;
+            out[5] = bm & 0xFF;
+
+            len = 6;
             return true;
+        }
 
         case 0x0C: // RPM
         {
@@ -171,6 +207,20 @@ static bool handlePID(uint8_t mode, uint8_t pid, uint8_t *out, uint8_t &len)
             out[2] = 88;
             len = 3;
             return true;
+
+        case 0x20:
+        {
+            // no support beyond 0x20
+            out[0] = 0x41;
+            out[1] = 0x20;
+            out[2] = 0x00;
+            out[3] = 0x00;
+            out[4] = 0x00;
+            out[5] = 0x00;
+
+            len = 6;
+            return true;
+        }
         }
     }
 
@@ -193,6 +243,26 @@ static bool handlePID(uint8_t mode, uint8_t pid, uint8_t *out, uint8_t &len)
             return true;
         }
         }
+    }
+
+    // ===== MODE 03 (Stored DTCs) =====
+    if (mode == 0x03)
+    {
+        // Example: 2 DTCs
+        uint16_t dtc1 = encodeDTC('P', 0x0300); // P0300 (random misfire)
+        uint16_t dtc2 = encodeDTC('P', 0x0133); // P0133 (O2 slow response)
+
+        out[0] = 0x43; // response for Mode 03
+
+        out[1] = dtc1 >> 8;
+        out[2] = dtc1 & 0xFF;
+
+        out[3] = dtc2 >> 8;
+        out[4] = dtc2 & 0xFF;
+
+        len = 5; // 1 + 2*2 bytes
+
+        return true;
     }
 
     return false;
