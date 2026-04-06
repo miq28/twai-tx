@@ -18,8 +18,11 @@
 #define OBD_PORT 35000
 
 // ===== TCP =====
-static AsyncServer server(23);
-static AsyncClient* client = nullptr;
+static AsyncServer serverCLI(TELNET_PORT);
+static AsyncServer serverELM(OBD_PORT);
+
+static AsyncClient *clientCLI = nullptr;
+static AsyncClient *clientELM = nullptr;
 
 // ===== UDP =====
 static WiFiUDP udp;
@@ -37,9 +40,9 @@ static const uint8_t GVRET_MAGIC[4] = {0x1C, 0xEF, 0xAC, 0xED};
 
 static uint8_t udpRxBuf[32];
 
-
 // ===== OTA STATE =====
-enum OTAState {
+enum OTAState
+{
     OTA_OFF = 0,
     OTA_READY
 };
@@ -50,33 +53,28 @@ static OTAState otaState = OTA_OFF;
 static void initOTAHandlers()
 {
     static bool installed = false;
-    if (installed) return;
+    if (installed)
+        return;
     installed = true;
 
     ArduinoOTA
         .onStart([]()
-        {
+                 {
             const char* type = (ArduinoOTA.getCommand() == U_FLASH) ? "sketch" : "filesystem";
-            DEBUG("OTA Start: %s\n", type);
-        })
+            DEBUG("OTA Start: %s\n", type); })
         .onEnd([]()
-        {
-            DEBUG("OTA End\n");
-        })
+               { DEBUG("OTA End\n"); })
         .onProgress([](unsigned int progress, unsigned int total)
-        {
-            DEBUG("OTA %u%%\n", (progress / (total / 100)));
-        })
+                    { DEBUG("OTA %u%%\n", (progress / (total / 100))); })
         .onError([](ota_error_t error)
-        {
-            DEBUG("OTA Error[%u]\n", error);
-        });
+                 { DEBUG("OTA Error[%u]\n", error); });
 }
 
 // ===== OTA CONTROL =====
 static void startOTA()
 {
-    if (otaState == OTA_READY) return;
+    if (otaState == OTA_READY)
+        return;
 
     ArduinoOTA.setHostname(OTA_HOSTNAME);
     ArduinoOTA.setPort(OTA_PORT);
@@ -88,7 +86,8 @@ static void startOTA()
 
 static void stopOTA()
 {
-    if (otaState == OTA_OFF) return;
+    if (otaState == OTA_OFF)
+        return;
     otaState = OTA_OFF;
     DEBUG("OTA STOPPED\n");
 }
@@ -97,46 +96,45 @@ static void stopOTA()
 static void setupWiFiEvents()
 {
     WiFi.onEvent([](WiFiEvent_t, WiFiEventInfo_t info)
-    {
+                 {
         DEBUG("WiFi disconnected: %d\n", info.wifi_sta_disconnected.reason);
         stopOTA();
         MDNS.end();
-        udp.stop();
-    }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+        udp.stop(); }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
 
     WiFi.onEvent([](WiFiEvent_t, WiFiEventInfo_t)
-    {
-        DEBUG("WiFi GOT IP: %s\n", WiFi.localIP().toString().c_str());
+                 {
+                     DEBUG("WiFi GOT IP: %s\n", WiFi.localIP().toString().c_str());
 
-        // ===== OTA =====
-        initOTAHandlers();
-        startOTA();
+                     // ===== OTA =====
+                     initOTAHandlers();
+                     startOTA();
 
-        // ===== MDNS =====
-        if (!MDNS.begin(MDNS_NAME))
-        {
-            DEBUG("Error setting up MDNS responder!\n");
-        }
-        else
-        {
-            MDNS.addService("gvretServer", "tcp", TELNET_PORT);
-            MDNS.addService("ELM327", "tcp", OBD_PORT);
-            DEBUG("MDNS started\n");
-        }
+                     // ===== MDNS =====
+                     if (!MDNS.begin(MDNS_NAME))
+                     {
+                         DEBUG("Error setting up MDNS responder!\n");
+                     }
+                     else
+                     {
+                         MDNS.addService("gvretServer", "tcp", TELNET_PORT);
+                         MDNS.addService("ELM327", "tcp", OBD_PORT);
+                         DEBUG("MDNS started\n");
+                     }
 
-        // ===== UDP LISTENER =====
-        udp.begin(DISCOVERY_PORT);
-        DEBUG("UDP listening on %d\n", DISCOVERY_PORT);
-
-    }, ARDUINO_EVENT_WIFI_STA_GOT_IP);
+                     // ===== UDP LISTENER =====
+                     udp.begin(DISCOVERY_PORT);
+                     DEBUG("UDP listening on %d\n", DISCOVERY_PORT); },
+                 ARDUINO_EVENT_WIFI_STA_GOT_IP);
 }
 
-static size_t buildGVRETResponse(uint8_t* buf)
+static size_t buildGVRETResponse(uint8_t *buf)
 {
-    uint8_t* p = buf;
+    uint8_t *p = buf;
 
     // magic
-    memcpy(p, GVRET_MAGIC, 4); p += 4;
+    memcpy(p, GVRET_MAGIC, 4);
+    p += 4;
 
     // protocol version
     *p++ = 0x01;
@@ -157,7 +155,7 @@ static size_t buildGVRETResponse(uint8_t* buf)
     *p++ = (port & 0xFF);
 
     // name (null-terminated)
-    const char* name = MDNS_NAME;
+    const char *name = MDNS_NAME;
     size_t nameLen = strlen(name);
     memcpy(p, name, nameLen);
     p += nameLen;
@@ -167,37 +165,33 @@ static size_t buildGVRETResponse(uint8_t* buf)
 }
 
 // ===== TCP SERVER =====
-static void setupServer()
+static void setupServer(AsyncServer &srv, AsyncClient *&clientRef)
 {
-    server.onClient([](void*, AsyncClient* c)
-    {
-        if (client)
-            client->close();
+    srv.onClient([](void *arg, AsyncClient *c)
+                 {
+                     AsyncClient *&client = *(AsyncClient **)arg;
 
-        client = c;
-        client->setNoDelay(true);
+                     if (client)
+                         client->close();
 
-        client->onDisconnect([](void*, AsyncClient* c)
-        {
-            if (client == c) client = nullptr;
-        }, nullptr);
+                     client = c;
+                     client->setNoDelay(true);
 
-        client->onError([](void*, AsyncClient* c, int8_t)
-        {
-            if (client == c) client = nullptr;
-        }, nullptr);
+                     client->onDisconnect([](void *arg, AsyncClient *c)
+                                          {
+            AsyncClient*& client = *(AsyncClient**)arg;
+            if (client == c) client = nullptr; }, arg);
 
-        client->onData([](void*, AsyncClient*, void* data, size_t len)
-        {
-            // uint8_t* d = (uint8_t*)data;
-            // for (size_t i = 0; i < len; i++)
-            //     transportDispatchByte(d[i]);
-            transportDispatchBuffer((const uint8_t*)data, len);
-        }, nullptr);
+                     client->onError([](void *arg, AsyncClient *c, int8_t)
+                                     {
+            AsyncClient*& client = *(AsyncClient**)arg;
+            if (client == c) client = nullptr; }, arg);
 
-    }, nullptr);
+                     client->onData([](void *, AsyncClient *, void *data, size_t len)
+                                    { transportDispatchBuffer((const uint8_t *)data, len); }, nullptr); },
+                 &clientRef);
 
-    server.begin();
+    srv.begin();
 }
 
 // ===== PUBLIC =====
@@ -209,11 +203,12 @@ void netInit()
     WiFi.setSleep(false);
     WiFi.begin(WIFI_SSID, WIFI_PASS);
 
-    setupServer();
+    setupServer(serverCLI, clientCLI);
+    setupServer(serverELM, clientELM);
 
+    DEBUG("Servers started: CLI=%d, ELM=%d\n", TELNET_PORT, OBD_PORT);
     DEBUG("NET INIT DONE\n");
 }
-
 void netLoop()
 {
     // ===== OTA =====
@@ -247,9 +242,16 @@ void netLoop()
         {
             // ===== IGNORE IF ALREADY CONNECTED =====
             // ===== but allow same client reconnect =====
-            if (netClientConnected() && udp.remoteIP() != client->remoteIP())
+            // allow same client, block others
+            if (netClientConnected())
             {
-                return;
+                IPAddress rip = udp.remoteIP();
+
+                if ((clientCLI && clientCLI->remoteIP() != rip) &&
+                    (clientELM && clientELM->remoteIP() != rip))
+                {
+                    return;
+                }
             }
 
             IPAddress rip = udp.remoteIP();
@@ -278,16 +280,23 @@ void netLoop()
     }
 }
 
-size_t netWrite(const uint8_t* data, size_t len)
+size_t netWrite(const uint8_t *data, size_t len)
 {
-    if (client && client->connected() && client->canSend())
+    if (clientELM && clientELM->connected() && clientELM->canSend())
     {
-        return client->write((const char*)data, len);
+        return clientELM->write((const char *)data, len);
     }
+
+    if (clientCLI && clientCLI->connected() && clientCLI->canSend())
+    {
+        return clientCLI->write((const char *)data, len);
+    }
+
     return 0;
 }
 
 bool netClientConnected()
 {
-    return (client && client->connected());
+    return (clientELM && clientELM->connected()) ||
+           (clientCLI && clientCLI->connected());
 }

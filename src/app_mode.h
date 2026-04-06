@@ -14,7 +14,8 @@ enum Mode
     MODE_SLOW,
     MODE_ECU,
     MODE_ANALYZER,
-    MODE_SAVVYCAN
+    MODE_SAVVYCAN,
+    MODE_ELM327
 };
 
 struct AppState

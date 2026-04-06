@@ -5,6 +5,7 @@
 #include "traffic_modes.h"
 #include "analyzer_mode.h"
 #include "gvret_mode.h"
+#include "elm_mode.h"
 #include "debug.h"
 
 const char *resetReasonToStr(esp_reset_reason_t r)
@@ -84,6 +85,10 @@ void loop()
 
     case MODE_SAVVYCAN:
         gvretLoop();
+        break;
+
+    case MODE_ELM327:
+        elmLoop();
         break;
     }
 

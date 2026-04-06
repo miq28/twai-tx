@@ -7,56 +7,107 @@
 
 namespace
 {
-uint8_t currentId = 0;
-uint32_t counter = 0;
-uint64_t lastFrameUs = 0;
-uint64_t lastSlowUs = 0;
-uint32_t frameCount = 0;
-uint64_t lastFpsUs = 0;
+    uint8_t currentId = 0;
+    uint32_t counter = 0;
+    uint64_t lastFrameUs = 0;
+    uint64_t lastSlowUs = 0;
+    uint32_t frameCount = 0;
+    uint64_t lastFpsUs = 0;
 
-uint64_t last10ms = 0;
-uint64_t last20ms = 0;
-uint64_t last1000ms = 0;
-uint16_t rpm = 800;
-uint16_t speed = 0;
+    uint64_t last10ms = 0;
+    uint64_t last20ms = 0;
+    uint64_t last1000ms = 0;
+    uint16_t rpm = 800;
+    uint16_t speed = 0;
 }
 
-static void sendOBDResponse(uint32_t id, const uint8_t* data, uint8_t len)
-{
-    if (len > 7) return; // single-frame limit
+bool fcReceived;
 
-    // --- SINGLE FRAME ONLY (for now) ---
+struct IsoTpTxState
+{
+    bool active;
+    uint32_t id;
+
+    const uint8_t *data;
+    uint16_t len;
+
+    uint16_t offset;
+    uint8_t seq;
+
+    uint32_t lastSendMs;
+
+    bool fcReceived;
+};
+
+static IsoTpTxState isoTx = {};
+
+static void sendOBDResponse(uint32_t id, const uint8_t *data, uint8_t len)
+{
+    // --- SINGLE FRAME ---
+    if (len <= 7)
+    {
+        twai_message_t tx = {};
+
+        tx.identifier = id;
+        tx.extd = 0;
+        tx.rtr = 0;
+
+        tx.data[0] = len;
+        memcpy(&tx.data[1], data, len);
+
+        tx.data_length_code = len + 1;
+
+        CANDriver::send(tx);
+        return;
+    }
+
+    // --- MULTI FRAME (start) ---
+    isoTx.active = true;
+    isoTx.fcReceived = false;
+    isoTx.id = id;
+    isoTx.data = data;
+    isoTx.len = len;
+    isoTx.offset = 6; // first frame carries 6 bytes
+    isoTx.seq = 1;
+    isoTx.lastSendMs = 0;
+
+    // First Frame
     twai_message_t tx = {};
 
     tx.identifier = id;
-    tx.extd = 0;
-    tx.rtr = 0;
 
-    // PCI = payload length (ISO-TP single frame)
-    tx.data[0] = len;
+    tx.data[0] = 0x10 | ((len >> 8) & 0x0F); // FF
+    tx.data[1] = len & 0xFF;
 
-    // copy payload
-    memcpy(&tx.data[1], data, len);
+    memcpy(&tx.data[2], data, 6);
 
-    tx.data_length_code = len + 1;
+    tx.data_length_code = 8;
 
     CANDriver::send(tx);
 }
 
-static bool handlePID(uint8_t mode, uint8_t pid, uint8_t* out, uint8_t& len)
+static bool handlePID(uint8_t mode, uint8_t pid, uint8_t *out, uint8_t &len)
 {
-    if (mode != 0x01) return false;
+    if (mode != 0x01)
+        return false;
 
     switch (pid)
     {
-    case 0x00: // supported PIDs
-        out[0] = 0x41;
-        out[1] = 0x00;
-        out[2] = 0x08; // fake support bitmap
-        out[3] = 0x10;
-        out[4] = 0x00;
-        out[5] = 0x00;
-        len = 6;
+        // case 0x00: // supported PIDs
+        //     out[0] = 0x41;
+        //     out[1] = 0x00;
+        //     out[2] = 0x08; // fake support bitmap
+        //     out[3] = 0x10;
+        //     out[4] = 0x00;
+        //     out[5] = 0x00;
+        //     len = 6;
+        //     return true;
+
+    case 0x00:
+        for (int i = 0; i < 20; i++)
+            out[i] = i;
+
+        len = 20;
         return true;
 
     case 0x0C: // RPM
@@ -83,43 +134,92 @@ static bool handlePID(uint8_t mode, uint8_t pid, uint8_t* out, uint8_t& len)
     return false;
 }
 
-static void handleOBDRequest(const twai_message_t& rx)
+static void handleOBDRequest(const twai_message_t &rx)
 {
-    if (rx.identifier != 0x7DF) return;
-    if (rx.data_length_code < 3) return;
+    if (rx.identifier != 0x7DF)
+        return;
+    if (rx.data_length_code < 3)
+        return;
 
     uint8_t mode = rx.data[1];
-    uint8_t pid  = rx.data[2];
+    uint8_t pid = rx.data[2];
 
-    uint8_t payload[8];
+    static uint8_t payload[64];
     uint8_t len = 0;
 
-    if (!handlePID(mode, pid, payload, len)) return;
+    if (!handlePID(mode, pid, payload, len))
+        return;
 
     // --- ISO-TP SINGLE FRAME ---
     sendOBDResponse(0x7E8, payload, len);
-    
+}
+
+static void processIsoTpTx()
+{
+    if (!isoTx.active)
+        return;
+
+    // wait for Flow Control
+    if (!isoTx.fcReceived)
+        return;
+
+    // simple pacing (no delay, no block)
+    if (millis() - isoTx.lastSendMs < 2)
+        return;
+
+    if (isoTx.offset >= isoTx.len)
+    {
+        isoTx.active = false;
+        return;
+    }
+
+    twai_message_t tx = {};
+
+    tx.identifier = isoTx.id;
+
+    // Consecutive Frame
+    tx.data[0] = 0x20 | (isoTx.seq & 0x0F);
+
+    uint8_t remaining = isoTx.len - isoTx.offset;
+    uint8_t chunk = remaining > 7 ? 7 : remaining;
+
+    memcpy(&tx.data[1], isoTx.data + isoTx.offset, chunk);
+
+    tx.data_length_code = chunk + 1;
+
+    CANDriver::send(tx);
+
+    isoTx.offset += chunk;
+    isoTx.seq++;
+    if (isoTx.seq > 0x0F)
+        isoTx.seq = 1;
+
+    isoTx.lastSendMs = millis();
 }
 
 void generatorLoop()
 {
-    if (!appState.running) return;
+    if (!appState.running)
+        return;
 
     uint64_t now = esp_timer_get_time();
 
     if (appState.mode == MODE_SLOW)
     {
-        if (now - lastSlowUs < 3000000ULL) return;
+        if (now - lastSlowUs < 3000000ULL)
+            return;
         lastSlowUs = now;
     }
     else if (appState.delay_us > 0)
     {
-        if (now - lastFrameUs < (uint64_t)appState.delay_us) return;
+        if (now - lastFrameUs < (uint64_t)appState.delay_us)
+            return;
     }
     else if (appState.target_fps > 0)
     {
         uint32_t interval = 1000000ULL / appState.target_fps;
-        if (now - lastFrameUs < interval) return;
+        if (now - lastFrameUs < interval)
+            return;
     }
 
     twai_message_t msg = {};
@@ -128,7 +228,8 @@ void generatorLoop()
     msg.data_length_code = 8;
 
     uint32_t id = appState.locked_id >= 0 ? appState.locked_id : currentId;
-    if (canFrameCfg.extended) id |= 0x100;
+    if (canFrameCfg.extended)
+        id |= 0x100;
     msg.identifier = id;
 
     msg.data[0] = (counter >> 0) & 0xFF;
@@ -146,7 +247,8 @@ void generatorLoop()
         frameCount++;
         lastFrameUs = now;
 
-        if (appState.locked_id < 0) currentId = (currentId + 1) % 10;
+        if (appState.locked_id < 0)
+            currentId = (currentId + 1) % 10;
     }
 
     if (now - lastFpsUs >= 1000000ULL)
@@ -159,12 +261,26 @@ void generatorLoop()
 
 void ecuLoop()
 {
-    if (!appState.running) return;
+    if (!appState.running)
+        return;
 
     CANRxItem item;
 
     while (rxBufferPop(item))
     {
-        handleOBDRequest(item.msg);
+        const auto &m = item.msg;
+
+        // --- detect Flow Control (from tester) ---
+        if (m.identifier == 0x7E0 && (m.data[0] & 0xF0) == 0x30)
+        {
+            Serial.println("FC received");
+            isoTx.fcReceived = true;
+            continue;
+        }
+
+        handleOBDRequest(m);
     }
+
+    // NEW
+    processIsoTpTx();
 }
