@@ -38,8 +38,6 @@ static const uint8_t DISCOVERY_RESP[8] = {
 
 static uint8_t udpRxBuf[32];
 
-// external (from transport)
-extern InputContext serialCtx;
 
 // ===== OTA STATE =====
 enum OTAState {
