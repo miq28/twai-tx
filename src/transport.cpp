@@ -2,6 +2,7 @@
 #include "transport.h"
 #include "command.h"
 #include "debug.h"
+#include "net_manager.h"
 
 static InputContext serialCtx;
 
@@ -13,7 +14,15 @@ void transportInit()
     Serial.begin(1000000);
 #endif
     delay(100);
+
+    netInit();
+
     DEBUG_PRINTLN("Type 'help' for commands");
+}
+
+void transportDispatchByte(uint8_t b)
+{
+    dispatchByte(serialCtx, b);
 }
 
 void transportProcess()
@@ -22,18 +31,18 @@ void transportProcess()
     while (Serial.available())
     {
         uint8_t b = Serial.read();
-        dispatchByte(serialCtx, b);
+        transportDispatchByte(b);
     }
 
     // ===== RS485 =====
     while (RS485.available())
     {
         uint8_t b = RS485.read();
-        dispatchByte(serialCtx, b);
+        transportDispatchByte(b);
     }
+
+    netLoop();
 }
-
-
 
 // ===== TX handing
 #define TX_BUF_SIZE 2048
@@ -45,13 +54,14 @@ static volatile uint16_t txTail = 0;
 static inline bool txPush(uint8_t b)
 {
     uint16_t next = (txHead + 1) % TX_BUF_SIZE;
-    if (next == txTail) return false; // full → drop
+    if (next == txTail)
+        return false; // full → drop
     txBuf[txHead] = b;
     txHead = next;
     return true;
 }
 
-void transportWrite(const uint8_t* data, size_t len)
+void transportWrite(const uint8_t *data, size_t len)
 {
     for (size_t i = 0; i < len; i++)
     {
@@ -61,12 +71,23 @@ void transportWrite(const uint8_t* data, size_t len)
 
 void transportFlush()
 {
-    while (txTail != txHead)
-    {
-        uint8_t b = txBuf[txTail];
-        txTail = (txTail + 1) % TX_BUF_SIZE;
+    uint8_t chunk[128];
+    int n = 0;
 
-        // current behavior: USB only
-        Serial.write(b);
+    while (txTail != txHead && n < sizeof(chunk))
+    {
+        chunk[n++] = txBuf[txTail];
+        txTail = (txTail + 1) % TX_BUF_SIZE;
+    }
+
+    if (n > 0)
+    {
+        if (netClientConnected())
+        {
+            if (netWrite(chunk, n) == 0)
+                Serial.write(chunk, n);
+        }
+        else
+            Serial.write(chunk, n);
     }
 }
