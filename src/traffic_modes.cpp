@@ -21,6 +21,86 @@ uint16_t rpm = 800;
 uint16_t speed = 0;
 }
 
+static void sendOBDResponse(uint32_t id, const uint8_t* data, uint8_t len)
+{
+    if (len > 7) return; // single-frame limit
+
+    // --- SINGLE FRAME ONLY (for now) ---
+    twai_message_t tx = {};
+
+    tx.identifier = id;
+    tx.extd = 0;
+    tx.rtr = 0;
+
+    // PCI = payload length (ISO-TP single frame)
+    tx.data[0] = len;
+
+    // copy payload
+    memcpy(&tx.data[1], data, len);
+
+    tx.data_length_code = len + 1;
+
+    CANDriver::send(tx);
+}
+
+static bool handlePID(uint8_t mode, uint8_t pid, uint8_t* out, uint8_t& len)
+{
+    if (mode != 0x01) return false;
+
+    switch (pid)
+    {
+    case 0x00: // supported PIDs
+        out[0] = 0x41;
+        out[1] = 0x00;
+        out[2] = 0x08; // fake support bitmap
+        out[3] = 0x10;
+        out[4] = 0x00;
+        out[5] = 0x00;
+        len = 6;
+        return true;
+
+    case 0x0C: // RPM
+    {
+        uint16_t rpm = 3000;
+        uint16_t v = rpm * 4;
+
+        out[0] = 0x41;
+        out[1] = 0x0C;
+        out[2] = v >> 8;
+        out[3] = v & 0xFF;
+        len = 4;
+        return true;
+    }
+
+    case 0x0D: // speed
+        out[0] = 0x41;
+        out[1] = 0x0D;
+        out[2] = 88;
+        len = 3;
+        return true;
+    }
+
+    return false;
+}
+
+static void handleOBDRequest(const twai_message_t& rx)
+{
+    if (rx.identifier != 0x7DF) return;
+    if (rx.data_length_code < 3) return;
+
+    uint8_t mode = rx.data[1];
+    uint8_t pid  = rx.data[2];
+
+    uint8_t payload[8];
+    uint8_t len = 0;
+
+    if (!handlePID(mode, pid, payload, len)) return;
+
+    // --- ISO-TP SINGLE FRAME ---
+    sendOBDResponse(0x7E8, payload, len);
+    
+}
+
 void generatorLoop()
 {
     if (!appState.running) return;
@@ -81,45 +161,10 @@ void ecuLoop()
 {
     if (!appState.running) return;
 
-    uint64_t now = esp_timer_get_time();
-    twai_message_t msg = {};
-    msg.extd = 0;
-    msg.rtr = 0;
+    CANRxItem item;
 
-    if (now - last10ms >= 10000)
+    while (rxBufferPop(item))
     {
-        last10ms = now;
-        msg.identifier = 0x100;
-        msg.data_length_code = 2;
-
-        rpm += 10;
-        if (rpm > 4000) rpm = 800;
-
-        msg.data[0] = rpm & 0xFF;
-        msg.data[1] = (rpm >> 8) & 0xFF;
-        CANDriver::send(msg);
-    }
-
-    if (now - last20ms >= 20000)
-    {
-        last20ms = now;
-        msg.identifier = 0x200;
-        msg.data_length_code = 2;
-
-        speed += 1;
-        if (speed > 120) speed = 0;
-
-        msg.data[0] = speed & 0xFF;
-        msg.data[1] = (speed >> 8) & 0xFF;
-        CANDriver::send(msg);
-    }
-
-    if (now - last1000ms >= 1000000)
-    {
-        last1000ms = now;
-        msg.identifier = 0x300;
-        msg.data_length_code = 1;
-        msg.data[0] = 0xAA;
-        CANDriver::send(msg);
+        handleOBDRequest(item.msg);
     }
 }
