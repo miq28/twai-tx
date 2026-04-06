@@ -65,7 +65,11 @@ static inline bool txPush(uint8_t b)
 {
     uint16_t next = (txHead + 1) % TX_BUF_SIZE;
     if (next == txTail)
-        return false; // full → drop
+    {
+        // full → drop
+        DEBUG_PRINTLN("[TX] drop");
+        return false;
+    }
     txBuf[txHead] = b;
     txHead = next;
     return true;
@@ -94,8 +98,7 @@ void transportFlush()
     {
         if (netClientConnected())
         {
-            if (netWrite(chunk, n) == 0)
-                Serial.write(chunk, n);
+            netWrite(chunk, n);
         }
         else
             Serial.write(chunk, n);
