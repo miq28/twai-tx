@@ -11,8 +11,8 @@ static AsyncWebSocket ws("/ws");
 
 // ===== RATE LIMIT =====
 static uint32_t lastPushMs = 0;
-#define WS_INTERVAL_MS 10  // was 20
-#define WS_BATCH_FRAMES 16 // NEW
+#define WS_INTERVAL_MS 20  // was 20
+#define WS_BATCH_FRAMES 8 // NEW
 
 #define WEB_BUF_SIZE 256
 

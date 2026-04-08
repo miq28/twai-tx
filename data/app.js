@@ -1,4 +1,43 @@
-const ws = new WebSocket("ws://" + location.host + "/ws");
+let ws;
+
+function connectWS() {
+    ws = new WebSocket("ws://" + location.host + "/ws");
+    ws.binaryType = "arraybuffer";
+
+    ws.onclose = () => {
+        setTimeout(connectWS, 1000);
+    };
+
+    ws.onmessage = (e) => {
+        if (paused) return;
+
+        const buf = new Uint8Array(e.data);
+
+        for (let i = 0; i < buf.length; i += 13) {
+
+            let id =
+                buf[i] |
+                (buf[i+1] << 8) |
+                (buf[i+2] << 16) |
+                (buf[i+3] << 24);
+
+            let dlc = buf[i+4];
+
+            totalFrames++;
+
+            if (rawMode) continue;
+
+            let data = "";
+            for (let j = 0; j < dlc; j++) {
+                data += buf[i+5+j].toString(16).padStart(2, "0").toUpperCase();
+            }
+
+            handleFrame(id, dlc, data);
+        }
+    };
+}
+
+connectWS();
 
 const map = {};
 let paused = false;
@@ -8,7 +47,7 @@ let totalFrames = 0;
 let lastCount = 0;
 let lastTime = performance.now();
 
-let rawMode = true;   // CRITICAL for 4k FPS
+let rawMode = false;   // CRITICAL for 4k FPS, true disables CAN frames live table
 
 // ===== UI =====
 document.getElementById("filterInput").oninput = (e) => {
