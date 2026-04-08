@@ -4,90 +4,6 @@
 
 static File uploadFile;
 
-// static void listRecursive(File dir, AsyncResponseStream *res, bool &first, int depth = 0)
-// {
-//     String indent(depth * 2, ' ');
-
-//     Serial.printf("%s[DIR] Enter: %s\n", indent.c_str(), dir.name());
-
-//     File file = dir.openNextFile();
-
-//     if (!file)
-//     {
-//         Serial.printf("%s[DIR] Empty or failed to read\n", indent.c_str());
-//     }
-
-//     while (file)
-//     {
-//         String path = file.name();
-
-//         Serial.printf("%s[ITEM] %s | %s\n",
-//                       indent.c_str(),
-//                       file.isDirectory() ? "DIR " : "FILE",
-//                       path.c_str());
-
-//         if (file.isDirectory())
-//         {
-//             listRecursive(file, res, first, depth + 1);
-//         }
-//         else
-//         {
-//             if (!first) res->print(",");
-//             first = false;
-
-//             res->print("{\"type\":\"file\",\"name\":\"");
-
-//             int slash = path.lastIndexOf('/');
-//             res->print(path.substring(slash + 1));
-
-//             res->print("\",\"path\":\"");
-//             res->print(path);
-//             res->print("\",\"size\":");
-//             res->print(file.size());
-//             res->print("}");
-
-//             Serial.printf("%s[FILE] size=%u\n", indent.c_str(), file.size());
-//         }
-
-//         file = dir.openNextFile();
-//     }
-
-//     Serial.printf("%s[DIR] Exit: %s\n", indent.c_str(), dir.name());
-// }
-
-// static void handleList(AsyncWebServerRequest *req)
-// {
-//     AsyncResponseStream *res = req->beginResponseStream("application/json");
-//     res->print("[");
-
-//     bool first = true;
-
-//     Serial.println("[LIST] Opening root '/' ...");
-//     File root = LittleFS.open("/");
-
-//     if (!root)
-//     {
-//         Serial.println("[ERROR] Failed to open root '/'");
-//         res->print("{\"error\":\"open_root_failed\"}]");
-//         req->send(res);
-//         return;
-//     }
-
-//     if (!root.isDirectory())
-//     {
-//         Serial.println("[ERROR] Root is NOT a directory");
-//         res->print("{\"error\":\"root_not_dir\"}]");
-//         req->send(res);
-//         return;
-//     }
-
-//     Serial.println("[OK] Root opened, starting recursion...");
-//     listRecursive(root, res, first);
-
-//     res->print("]");
-//     req->send(res);
-// }
-
 static void listRecursive(File dir, const String &base, AsyncResponseStream *res, bool &first)
 {
     File file = dir.openNextFile();
@@ -241,6 +157,70 @@ static void handleSave(AsyncWebServerRequest *req,
     }
 }
 
+void handleSaveBody(AsyncWebServerRequest *req,
+                    uint8_t *data,
+                    size_t len,
+                    size_t index,
+                    size_t total)
+{
+    if (index == 0)
+    {
+        if (!req->hasHeader("X-Path"))
+        {
+            req->send(400, "text/plain", "Missing path");
+            return;
+        }
+
+        String path = req->getHeader("X-Path")->value();
+
+        uploadFile = LittleFS.open(path, "w");
+        if (!uploadFile)
+        {
+            req->send(500, "text/plain", "Open failed");
+            return;
+        }
+    }
+
+    if (uploadFile)
+        uploadFile.write(data, len);
+
+    if (index + len == total)
+    {
+        if (uploadFile)
+            uploadFile.close();
+        req->send(200, "text/plain", "OK");
+    }
+}
+
+// upload-style (chunked / unknown length)
+void handleSaveUpload(AsyncWebServerRequest *req,
+                      String filename,
+                      size_t index,
+                      uint8_t *data,
+                      size_t len,
+                      bool final)
+{
+    if (index == 0)
+    {
+        if (!req->hasHeader("X-Path"))
+            return;
+
+        String path = req->getHeader("X-Path")->value();
+
+        uploadFile = LittleFS.open(path, "w");
+    }
+
+    if (uploadFile)
+        uploadFile.write(data, len);
+
+    if (final)
+    {
+        if (uploadFile)
+            uploadFile.close();
+        req->send(200, "text/plain", "OK");
+    }
+}
+
 // ===== DELETE =====
 static void handleDelete(AsyncWebServerRequest *req)
 {
@@ -294,10 +274,49 @@ void fileApiInit(AsyncWebServer &server)
     server.on("/save", HTTP_POST, [](AsyncWebServerRequest *req) {}, // no-op
               NULL, handleSave);
 
+    // server.on("/save", HTTP_POST, [](AsyncWebServerRequest *req) {
+    //     DEBUG_PRINTLN(">>> SAVE ROUTE HIT");
+    // }, // required
+    //           handleSaveUpload,                                      // 👈 for chunked
+    //           handleSaveBody                                         // 👈 for raw
+    // );
+
+    // server.on("/save", HTTP_POST, [](AsyncWebServerRequest *req)
+    //           {
+    //               // this MUST exist or ESP returns 501
+    //           },
+    //           [](AsyncWebServerRequest *req, String filename, size_t index, uint8_t *data, size_t len, bool final)
+    //           {
+
+    //         static File f;
+
+    //         if (index == 0) {
+    //             if (!req->hasHeader("X-Path")) {
+    //                 req->send(400, "text/plain", "Missing path");
+    //                 return;
+    //             }
+
+    //             String path = req->getHeader("X-Path")->value();
+
+    //             f = LittleFS.open(path, "w");
+    //             if (!f) {
+    //                 req->send(500, "text/plain", "Open failed");
+    //                 return;
+    //             }
+    //         }
+
+    //         if (f) f.write(data, len);
+
+    //         if (final) {
+    //             if (f) f.close();
+    //             req->send(200, "text/plain", "OK");
+    //         } });
+
     server.on("/delete", HTTP_POST, handleDelete);
 
     server.onNotFound([](AsyncWebServerRequest *req)
                       {
+                        DEBUG_PRINTLN(">>> NOT FOUND ROUTE HIT");
         String path = req->url();
         String type = "text/plain";
         if (path.endsWith(".html")) type = "text/html";

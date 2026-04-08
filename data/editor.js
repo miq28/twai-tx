@@ -72,7 +72,7 @@ const Editor = (function () {
             let buffer = "";
             let updates = 0;
 
-            const MAX_SIZE = 300 * 1024;     // 300KB hard cap
+            const MAX_SIZE = 512 * 1024;     // 300KB hard cap
             const BATCH_SIZE = 4096;         // insert every 4KB
             const MAX_UPDATES = 200;         // avoid too many inserts
 
@@ -208,10 +208,10 @@ const Editor = (function () {
             const res = await fetch("/save", {
                 method: "POST",
                 headers: {
-                    "Content-Type": "text/plain",
+                    "Content-Type": "application/octet-stream",
                     "X-Path": path
                 },
-                body: content
+                body: new TextEncoder().encode(content)   // 🔥 critical
             });
 
             if (!res.ok) {
