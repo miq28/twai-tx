@@ -4,6 +4,7 @@
 #include <string.h>
 #include "debug.h"
 #include "transport.h"
+#include "web_ui.h"
 
 namespace
 {
@@ -141,5 +142,7 @@ void analyzerLoop()
             encodeBinary(item);
         else
             encodeAscii(item);
+
+        webPushFrame(item);   // ADD THIS LINE
     }
 }

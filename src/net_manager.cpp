@@ -266,7 +266,7 @@ void netLoop()
             lastDiscoveryIP = rip;
             lastDiscoveryReply = now;
 
-            DEBUG("GVRET discovery from %s\n", rip.toString().c_str());
+            // DEBUG("GVRET discovery from %s\n", rip.toString().c_str());
 
             uint8_t resp[64];
             size_t respLen = buildGVRETResponse(resp);
@@ -275,7 +275,7 @@ void netLoop()
             udp.write(resp, respLen);
             udp.endPacket();
 
-            DEBUG("GVRET response sent\n");
+            // DEBUG("GVRET response sent\n");
         }
     }
 }

@@ -7,6 +7,7 @@
 #include "gvret_mode.h"
 #include "elm_mode.h"
 #include "debug.h"
+#include "web_ui.h"
 
 const char *resetReasonToStr(esp_reset_reason_t r)
 {
@@ -60,6 +61,7 @@ void setup()
     CANDriver::init(500000, false);
     startCanRxTask();
     analyzerInit();
+    webInit();
     DEBUG("Free heap after setup: %u\n", ESP.getFreeHeap());
 }
 
@@ -94,4 +96,6 @@ void loop()
 
     // ===== TX handing
     transportFlush();
+
+    webLoop();
 }

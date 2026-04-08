@@ -1,0 +1,23 @@
+body {
+    font-family: monospace;
+    background: #111;
+    color: #0f0;
+}
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+td, th {
+    border: 1px solid #333;
+    padding: 4px;
+}
+
+th {
+    background: #222;
+}
+
+.topbar {
+    margin-bottom: 10px;
+}
