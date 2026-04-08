@@ -90,9 +90,18 @@
             right: 0;
         }
 
-        .folder { font-weight: bold; }
-        .children { margin-left: 12px; display: none; }
-        .open > .children { display: block; }
+        .folder {
+            font-weight: bold;
+        }
+
+        .children {
+            margin-left: 12px;
+            display: none;
+        }
+
+        .file.open>.children {
+            display: block;
+        }
 
         .ctx {
             position: absolute;
@@ -101,12 +110,26 @@
             display: none;
             z-index: 1000;
         }
+
         .ctx div {
             padding: 5px 10px;
             cursor: pointer;
         }
+
         .ctx div:hover {
             background: #033;
+        }
+
+        .file.dir::before {
+            content: "📁 ";
+        }
+
+        .file.dir.open::before {
+            content: "📂 ";
+        }
+
+        .file:not(.dir)::before {
+            content: "📄 ";
         }
     </style>
 </head>

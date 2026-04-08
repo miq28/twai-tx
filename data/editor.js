@@ -30,6 +30,12 @@ const Editor = (function () {
             el.session.setMode("ace/mode/c_cpp");
         else if (n.endsWith(".txt"))
             el.session.setMode("ace/mode/text");
+        else if (n.endsWith(".py"))
+            el.session.setMode("ace/mode/python");
+        else if (n.endsWith(".ini"))
+            el.session.setMode("ace/mode/ini");
+        else if (n.endsWith(".csv"))
+            el.session.setMode("ace/mode/csv");
         else
             el.session.setMode("ace/mode/html");
     }
@@ -40,6 +46,12 @@ const Editor = (function () {
 
     async function load() {
         const path = document.getElementById("path").value;
+
+        // 🚫 BLOCK directories
+        if (!/\.[a-z0-9]+$/i.test(path)) {
+            setStatus("Not a file");
+            return;
+        }
 
         try {
             const res = await fetch("/file?path=" + encodeURIComponent(path));
@@ -307,9 +319,13 @@ function buildTree(files) {
         parts.forEach((p, i) => {
             if (!node[p]) {
                 node[p] = {
-                    __meta: i === parts.length - 1 ? f : { type: "dir" },
+                    __meta: {},
                     __children: {}
                 };
+            }
+            // assign meta ONLY for leaf
+            if (i === parts.length - 1) {
+                node[p].__meta = f;
             }
             node = node[p].__children;
         });
@@ -319,47 +335,71 @@ function buildTree(files) {
 }
 
 function renderTree(node, container, basePath = "") {
-    Object.keys(node).forEach(name => {
-        const item = node[name];
-        const meta = item.__meta;
 
-        const fullPath = basePath + "/" + name;
+    Object.keys(node)
+        .sort((a, b) => {
+            const A = Object.keys(node[a].__children).length > 0;
+            const B = Object.keys(node[b].__children).length > 0;
+            return (B - A) || a.localeCompare(b);
+        })
+        .forEach(name => {
 
-        const div = document.createElement("div");
-        div.className = "file " + meta.type;
+            const item = node[name];
+            const fullPath = basePath + "/" + name;
 
-        div.textContent =
-            name + (meta.size ? ` (${meta.size})` : "");
+            const isDir = Object.keys(item.__children).length > 0;
 
-        // CLICK
-        div.onclick = (e) => {
-            e.stopPropagation();
+            const div = document.createElement("div");
 
-            if (meta.type === "dir") {
-                div.classList.toggle("open");
+            div.classList.add("file");
 
-                if (!div._loaded) {
-                    const child = document.createElement("div");
-                    child.className = "children";
-                    div.appendChild(child);
-
-                    renderTree(item.__children, child, fullPath);
-                    div._loaded = true;
-                }
+            if (isDir) {
+                div.classList.add("dir");
             } else {
+                div.classList.add("file-item"); // avoid duplicate "file"
+            }
+
+            const meta = item.__meta;
+
+            div.innerHTML = `
+                <span class="label">${name}</span>
+                <span style="color:#888"> ${meta.size ? `(${meta.size})` : ""}</span>
+            `;
+
+            let child = null;
+
+            if (isDir) {
+                child = document.createElement("div");
+                child.className = "children";
+                div.appendChild(child);
+            }
+
+            // CLICK
+            div.onclick = (e) => {
+                e.stopPropagation();
+
+                if (isDir) {
+                    div.classList.toggle("open");
+
+                    if (!div._loaded) {
+                        renderTree(item.__children, child, fullPath);
+                        div._loaded = true;
+                    }
+                    return;
+                }
+
                 document.getElementById("path").value = fullPath;
                 Editor.load();
-            }
-        };
+            };
 
-        // RIGHT CLICK
-        div.oncontextmenu = (e) => {
-            e.preventDefault();
-            showCtx(e.pageX, e.pageY, fullPath);
-        };
+            // RIGHT CLICK
+            div.oncontextmenu = (e) => {
+                e.preventDefault();
+                showCtx(e.pageX, e.pageY, fullPath);
+            };
 
-        container.appendChild(div);
-    });
+            container.appendChild(div);
+        });
 }
 
 async function loadTree() {

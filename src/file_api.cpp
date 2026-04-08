@@ -4,53 +4,132 @@
 
 static File uploadFile;
 
+// static void listRecursive(File dir, AsyncResponseStream *res, bool &first, int depth = 0)
+// {
+//     String indent(depth * 2, ' ');
+
+//     Serial.printf("%s[DIR] Enter: %s\n", indent.c_str(), dir.name());
+
+//     File file = dir.openNextFile();
+
+//     if (!file)
+//     {
+//         Serial.printf("%s[DIR] Empty or failed to read\n", indent.c_str());
+//     }
+
+//     while (file)
+//     {
+//         String path = file.name();
+
+//         Serial.printf("%s[ITEM] %s | %s\n",
+//                       indent.c_str(),
+//                       file.isDirectory() ? "DIR " : "FILE",
+//                       path.c_str());
+
+//         if (file.isDirectory())
+//         {
+//             listRecursive(file, res, first, depth + 1);
+//         }
+//         else
+//         {
+//             if (!first) res->print(",");
+//             first = false;
+
+//             res->print("{\"type\":\"file\",\"name\":\"");
+
+//             int slash = path.lastIndexOf('/');
+//             res->print(path.substring(slash + 1));
+
+//             res->print("\",\"path\":\"");
+//             res->print(path);
+//             res->print("\",\"size\":");
+//             res->print(file.size());
+//             res->print("}");
+
+//             Serial.printf("%s[FILE] size=%u\n", indent.c_str(), file.size());
+//         }
+
+//         file = dir.openNextFile();
+//     }
+
+//     Serial.printf("%s[DIR] Exit: %s\n", indent.c_str(), dir.name());
+// }
+
+// static void handleList(AsyncWebServerRequest *req)
+// {
+//     AsyncResponseStream *res = req->beginResponseStream("application/json");
+//     res->print("[");
+
+//     bool first = true;
+
+//     Serial.println("[LIST] Opening root '/' ...");
+//     File root = LittleFS.open("/");
+
+//     if (!root)
+//     {
+//         Serial.println("[ERROR] Failed to open root '/'");
+//         res->print("{\"error\":\"open_root_failed\"}]");
+//         req->send(res);
+//         return;
+//     }
+
+//     if (!root.isDirectory())
+//     {
+//         Serial.println("[ERROR] Root is NOT a directory");
+//         res->print("{\"error\":\"root_not_dir\"}]");
+//         req->send(res);
+//         return;
+//     }
+
+//     Serial.println("[OK] Root opened, starting recursion...");
+//     listRecursive(root, res, first);
+
+//     res->print("]");
+//     req->send(res);
+// }
+
+static void listRecursive(File dir, const String &base, AsyncResponseStream *res, bool &first)
+{
+    File file = dir.openNextFile();
+
+    while (file)
+    {
+        String name = file.name();
+        String path = base + "/" + name;
+
+        if (file.isDirectory())
+        {
+            listRecursive(file, path, res, first);
+        }
+        else
+        {
+            if (!first)
+                res->print(",");
+            first = false;
+
+            res->print("{\"type\":\"file\",\"name\":\"");
+            res->print(name);
+            res->print("\",\"path\":\"");
+            res->print(path);
+            res->print("\",\"size\":");
+            res->print(file.size());
+            res->print("}");
+        }
+
+        file = dir.openNextFile();
+    }
+}
+
 // ===== LIST =====
 static void handleList(AsyncWebServerRequest *req)
 {
-    if (!req->hasArg("dir"))
-        return req->send(400, "text/plain", "BAD ARGS");
-
-    String path = req->arg("dir");
-
-    File root = LittleFS.open(path);
-    if (!root || !root.isDirectory())
-        return req->send(404, "text/plain", "NOT DIR");
-
     AsyncResponseStream *res = req->beginResponseStream("application/json");
     res->print("[");
 
     bool first = true;
-    File file = root.openNextFile();
 
-    while (file)
-    {
-        if (!first)
-            res->print(",");
-        first = false;
-
-        const char *name = file.name();
-        size_t size = file.size();
-        bool isDir = file.isDirectory();
-
-        DEBUG("FILE: %s (%u)\n", name, (unsigned int)size);
-
-        res->print("{\"type\":\"");
-        res->print(isDir ? "dir" : "file");
-        res->print("\",\"name\":\"");
-        res->print(name[0] == '/' ? name + 1 : name);
-        res->print("\",\"path\":\"");
-        res->print(name);
-        res->print("\"");
-
-        if (!isDir)
-        {
-            res->print(",\"size\":");
-            res->print(size);
-        }
-        res->print("}");
-
-        file = root.openNextFile();
-    }
+    File root = LittleFS.open("/");
+    listRecursive(root, "", res, first);
 
     res->print("]");
     req->send(res);
@@ -63,6 +142,16 @@ static void handleLoad(AsyncWebServerRequest *req)
         return req->send(400, "text/plain", "Missing path");
 
     String path = req->getParam("path")->value();
+
+    // reject directories explicitly
+    File f = LittleFS.open(path, "r");
+    if (f && f.isDirectory())
+    {
+        f.close();
+        return req->send(400, "text/plain", "Is directory");
+    }
+    if (f)
+        f.close();
 
     bool isGzip = false;
 
@@ -88,6 +177,16 @@ static void handleLoad(AsyncWebServerRequest *req)
         contentType = "text/css";
     else if (path.endsWith(".json") || path.endsWith(".json.gz"))
         contentType = "application/json";
+    else if (path.endsWith(".ini") || path.endsWith(".ini.gz"))
+        contentType = "text/plain";
+    else if (path.endsWith(".py") || path.endsWith(".py.gz"))
+        contentType = "text/x-python";
+    else if (path.endsWith(".csv") || path.endsWith(".csv.gz"))
+        contentType = "text/csv";
+    else if (path.endsWith(".cpp") || path.endsWith(".cpp.gz"))
+        contentType = "text/x-c++src";
+    else if (path.endsWith(".h") || path.endsWith(".h.gz"))
+        contentType = "text/x-c++hdr";
 
     AsyncWebServerResponse *response = req->beginResponse(LittleFS, path, contentType);
 

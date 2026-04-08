@@ -5,14 +5,24 @@
 #include <LittleFS.h>
 #include "debug.h"
 #include "file_api.h"
+#include "net_manager.h"
+
+#pragma pack(push, 1)
+struct CANBinFrame
+{
+    uint32_t id;
+    uint8_t dlc;
+    uint8_t data[8];
+};
+#pragma pack(pop)
 
 static AsyncWebServer server(80);
 static AsyncWebSocket ws("/ws");
 
 // ===== RATE LIMIT =====
 static uint32_t lastPushMs = 0;
-#define WS_INTERVAL_MS 20  // was 20
-#define WS_BATCH_FRAMES 8 // NEW
+#define WS_INTERVAL_MS 20 // was 20
+#define WS_BATCH_FRAMES 32 // NEW
 
 #define WEB_BUF_SIZE 256
 
@@ -200,22 +210,19 @@ void webInit()
 // ===== LOOP =====
 void webLoop()
 {
-    ws.cleanupClients();
-
     uint32_t now = millis();
-    if (now - lastPushMs < WS_INTERVAL_MS)
-        return;
+    // if (now - lastPushMs < WS_INTERVAL_MS)
+    //     return;
 
     lastPushMs = now;
 
     // ===== SAMPLE BUFFER =====
     CANRxItem item;
 
-    uint8_t batch[13 * WS_BATCH_FRAMES];
+    uint8_t batch[13 * WS_BATCH_FRAMES]; // bigger batch for TCP
     int offset = 0;
     int count = 0;
 
-    // BUILD
     while (rxBufferPop(item) && count < WS_BATCH_FRAMES)
     {
         const auto &m = item.msg;
@@ -241,18 +248,8 @@ void webLoop()
     if (offset == 0)
         return;
 
-    // SEND (RESTORED SIMPLE MODE)
+    netWrite(batch, offset);
 
-    if (ws.count() == 0)
-    {
-        wsDrops++;
-        return;
-    }
-
-    // broadcast like old working version
-    ws.binaryAll((const char *)batch, offset);
-
-    // stats
     wsFramesSent += count;
     wsBytesSent += offset;
 }
