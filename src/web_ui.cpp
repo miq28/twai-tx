@@ -11,13 +11,18 @@ static AsyncWebSocket ws("/ws");
 
 // ===== RATE LIMIT =====
 static uint32_t lastPushMs = 0;
-#define WS_INTERVAL_MS 20 // 50 FPS max
+#define WS_INTERVAL_MS 10  // was 20
+#define WS_BATCH_FRAMES 16 // NEW
 
 #define WEB_BUF_SIZE 256
 
 static CANRxItem webBuf[WEB_BUF_SIZE];
 static volatile uint16_t webHead = 0;
 static volatile uint16_t webTail = 0;
+
+static uint32_t wsFramesSent = 0;
+static uint32_t wsBytesSent = 0;
+static uint32_t wsDrops = 0;
 
 void handleFileList(AsyncWebServerRequest *request)
 {
@@ -151,7 +156,7 @@ void webInit()
     server.serveStatic("/", LittleFS, "/")
         .setDefaultFile("index.html");
 
-    fileApiInit(server);   // <-- ADD THIS
+    fileApiInit(server); // <-- ADD THIS
 
     // ===== WS =====
     ws.onEvent(onWsEvent);
@@ -180,6 +185,15 @@ void webInit()
         }
         req->send(200, "text/plain", "OK"); });
 
+    server.on("/ws_stats", HTTP_GET, [](AsyncWebServerRequest *req)
+              {
+        String s = "{";
+        s += "\"frames\":" + String(wsFramesSent) + ",";
+        s += "\"bytes\":"  + String(wsBytesSent)  + ",";
+        s += "\"drops\":"  + String(wsDrops);
+        s += "}";
+        req->send(200, "application/json", s); });
+
     server.begin();
 }
 
@@ -196,32 +210,49 @@ void webLoop()
 
     // ===== SAMPLE BUFFER =====
     CANRxItem item;
+
+    uint8_t batch[13 * WS_BATCH_FRAMES];
+    int offset = 0;
     int count = 0;
 
-    while (rxBufferPop(item) && count < 10) // max 10 frames per tick
+    // BUILD
+    while (rxBufferPop(item) && count < WS_BATCH_FRAMES)
     {
         const auto &m = item.msg;
 
-        char json[96]; // smaller, safer
+        uint8_t *pkt = batch + offset;
 
-        int n = snprintf(json, sizeof(json),
-                         "{\"id\":%lu,\"dlc\":%u,\"data\":\"",
-                         m.identifier,
-                         m.data_length_code);
+        uint32_t id = m.identifier;
 
-        for (int i = 0; i < m.data_length_code && i < 8; i++)
-        {
-            n += snprintf(json + n, sizeof(json) - n, "%02X", m.data[i]);
-        }
+        pkt[0] = id & 0xFF;
+        pkt[1] = (id >> 8) & 0xFF;
+        pkt[2] = (id >> 16) & 0xFF;
+        pkt[3] = (id >> 24) & 0xFF;
 
-        snprintf(json + n, sizeof(json) - n, "\"}");
+        pkt[4] = m.data_length_code;
 
-        if (m.data_length_code > 8)
-            return;
-        if (n <= 0 || n >= sizeof(json))
-            return;
+        for (int i = 0; i < 8; i++)
+            pkt[5 + i] = (i < m.data_length_code) ? m.data[i] : 0;
 
-        ws.textAll(json);
+        offset += 13;
         count++;
     }
+
+    if (offset == 0)
+        return;
+
+    // SEND (RESTORED SIMPLE MODE)
+
+    if (ws.count() == 0)
+    {
+        wsDrops++;
+        return;
+    }
+
+    // broadcast like old working version
+    ws.binaryAll((const char *)batch, offset);
+
+    // stats
+    wsFramesSent += count;
+    wsBytesSent += offset;
 }

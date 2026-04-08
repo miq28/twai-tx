@@ -415,6 +415,7 @@ void generatorLoop()
     {
         lastFpsUs = now;
         DEBUG("FPS: %lu\n", frameCount);
+        Serial.printf("FPS: %lu\n", frameCount);
         frameCount = 0;
     }
 }

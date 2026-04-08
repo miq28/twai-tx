@@ -209,6 +209,7 @@ void netInit()
     DEBUG("Servers started: CLI=%d, ELM=%d\n", TELNET_PORT, OBD_PORT);
     DEBUG("NET INIT DONE\n");
 }
+
 void netLoop()
 {
     // ===== OTA =====
@@ -233,9 +234,32 @@ void netLoop()
     }
 
     // ===== UDP RX (discovery request handling) =====
-    int packetSize = udp.parsePacket();
-    if (packetSize > 0)
+    static uint32_t lastUdpPoll = 0;
+    uint32_t nowMs = millis();
+
+    if (WiFi.status() != WL_CONNECTED)
     {
+        goto NETLOOP_END;
+    }
+
+    if ((nowMs - lastUdpPoll) >= 10) // 100 Hz max
+    {
+        lastUdpPoll = nowMs;
+
+        // ===== SKIP UDP WHEN BUSY =====
+        if (netClientConnected())
+        {
+            goto NETLOOP_END;
+        }
+
+        int packetSize = udp.parsePacket();
+
+        // ===== GUARD =====
+        if (packetSize <= 0 || packetSize > sizeof(udpRxBuf))
+        {
+            goto NETLOOP_END;
+        }
+
         int len = udp.read(udpRxBuf, sizeof(udpRxBuf));
 
         if (len >= 4 && memcmp(udpRxBuf, GVRET_MAGIC, 4) == 0)
@@ -250,7 +274,7 @@ void netLoop()
                 if ((clientCLI && clientCLI->remoteIP() != rip) &&
                     (clientELM && clientELM->remoteIP() != rip))
                 {
-                    return;
+                    goto NETLOOP_END;
                 }
             }
 
@@ -260,13 +284,13 @@ void netLoop()
             // ===== RATE LIMIT =====
             if (rip == lastDiscoveryIP && (now - lastDiscoveryReply) < 1000)
             {
-                return; // ignore spam
+                goto NETLOOP_END;
             }
 
             lastDiscoveryIP = rip;
             lastDiscoveryReply = now;
 
-            // DEBUG("GVRET discovery from %s\n", rip.toString().c_str());
+            DEBUG("GVRET discovery from %s\n", rip.toString().c_str());
 
             uint8_t resp[64];
             size_t respLen = buildGVRETResponse(resp);
@@ -275,9 +299,12 @@ void netLoop()
             udp.write(resp, respLen);
             udp.endPacket();
 
-            // DEBUG("GVRET response sent\n");
+            DEBUG("GVRET response sent\n");
         }
     }
+
+NETLOOP_END:
+    delay(0); // yield to lwIP / WiFi
 }
 
 size_t netWrite(const uint8_t *data, size_t len)
