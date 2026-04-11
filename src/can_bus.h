@@ -16,8 +16,15 @@ namespace CANDriver
     bool isRunning();
     uint32_t getCurrentBaud();
     bool isListenOnly();
+
 }
 
-bool rxBufferPop(CANRxItem &out);
-int rxBufferCount();
-void startCanRxTask();
+namespace CANRxBuffer
+{
+    bool pop(CANRxItem &out);
+    int count();
+    void startTask();
+    bool push(const twai_message_t &msg, uint32_t ts);
+    void clear();
+    void task(void *);
+}

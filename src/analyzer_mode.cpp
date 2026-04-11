@@ -132,7 +132,7 @@ void analyzerLoop()
 {
     CANRxItem item;
 
-    while (rxBufferPop(item))
+    while (CANRxBuffer::pop(item))
     {
         if (analyzerCfg.filterEnabled && item.msg.identifier != analyzerCfg.filterId)
             continue;

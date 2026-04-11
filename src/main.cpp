@@ -57,7 +57,7 @@ void setup()
     transportInit();
     initAppState();
     CANDriver::init(500000, false);
-    startCanRxTask();
+    CANRxBuffer::startTask();
     analyzerInit();
     DEBUG("Free heap after setup: %u\n", ESP.getFreeHeap());
 }

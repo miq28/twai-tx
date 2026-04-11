@@ -207,12 +207,22 @@ void handleCommand(const Command &cmd)
         appState.running = false;
         break;
     case CMD_SET_MODE:
-        if (strcmp(cmd.str, "generator") == 0) appState.mode = MODE_GENERATOR;
-        else if (strcmp(cmd.str, "slow") == 0) appState.mode = MODE_SLOW;
-        else if (strcmp(cmd.str, "ecu") == 0) appState.mode = MODE_ECU;
-        else if (strcmp(cmd.str, "analyzer") == 0) appState.mode = MODE_ANALYZER;
-        else if (strcmp(cmd.str, "savvycan") == 0) appState.mode = MODE_SAVVYCAN;
+    {
+        Mode newMode = appState.mode;
+
+        if (strcmp(cmd.str, "generator") == 0) newMode = MODE_GENERATOR;
+        else if (strcmp(cmd.str, "slow") == 0) newMode = MODE_SLOW;
+        else if (strcmp(cmd.str, "ecu") == 0) newMode = MODE_ECU;
+        else if (strcmp(cmd.str, "analyzer") == 0) newMode = MODE_ANALYZER;
+        else if (strcmp(cmd.str, "savvycan") == 0) newMode = MODE_SAVVYCAN;
+
+        if (newMode != appState.mode)
+        {
+            CANRxBuffer::clear();   // 🔥 CRITICAL: drop old frames
+            appState.mode = newMode;
+        }
         break;
+    }
     case CMD_SET_BAUD:
         CANDriver::reinit(cmd.value_u32, CANDriver::isListenOnly());
         break;
@@ -316,6 +326,7 @@ void dispatchByte(InputContext &, uint8_t b)
         escapeCount++;
         if (escapeCount >= 3)
         {
+            CANRxBuffer::clear();   // 🔥
             appState.mode = MODE_ANALYZER;
             escapeCount = 0;
             DEBUG_PRINTLN("[ESC] Exit SAVVYCAN mode");
@@ -329,6 +340,7 @@ void dispatchByte(InputContext &, uint8_t b)
 
     if (appState.mode != MODE_SAVVYCAN && (b == 0xE7 || b == 0xF1))
     {
+        CANRxBuffer::clear();   // 🔥 prevent ghost frames
         appState.mode = MODE_SAVVYCAN;
         DEBUG_PRINTLN("[AUTO] Enter SAVVYCAN mode");
     }

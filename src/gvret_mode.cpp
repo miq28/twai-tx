@@ -346,6 +346,7 @@ void gvretLoop()
         savvyConnected = false;
         binaryMode = false;
         DEBUG_PRINTLN("SavvyCan connection lost, exiting binary mode");
+        CANRxBuffer::clear();   // 🔥 important
         appState.mode = MODE_ANALYZER;
         DEBUG_PRINTLN("Mode switched to ANALYZER");
     }
@@ -354,7 +355,7 @@ void gvretLoop()
     {
         CANRxItem item;
 
-        while (rxBufferPop(item))
+        while (CANRxBuffer::pop(item))
         {
             const twai_message_t &m = item.msg;
             uint8_t buf[32];
