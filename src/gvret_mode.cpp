@@ -348,14 +348,14 @@ void gvretLoop()
         return;
 
     // timeout = 10 seconds (adjust if needed)
-    if (millis() - lastActivityMs > 10300)
+    if (millis() - lastActivityMs > 30000)
     {
         // savvyConnected = false;
         // binaryMode = false;
         // DEBUG_PRINTLN("SavvyCan connection lost, exiting binary mode");
-        CANRxBuffer::clear();   // 🔥 important
+        // CANRxBuffer::clear();   // 🔥 important
         savvyConnected = false;
-        binaryMode = false;
+        // binaryMode = false;
         // DO NOT force mode change
         // DEBUG_PRINTLN("Mode switched to ANALYZER");
     }
