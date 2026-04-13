@@ -109,7 +109,16 @@ namespace CANDriver
         twai_stop();
         driverRunning = false;
         twai_driver_uninstall();
-        return startDriver(baud, listenOnly);
+
+        bool ok = startDriver(baud, listenOnly);
+
+        // 🔥 clear stale frames from previous driver instance
+        CANRxBuffer::clear();
+
+        // 🔥 CRITICAL FIX: restart RX task
+        CANRxBuffer::startTask();
+
+        return ok;
     }
 
     bool send(const twai_message_t &msg)
@@ -135,6 +144,7 @@ namespace CANDriver
 
 namespace CANRxBuffer
 {
+    TaskHandle_t rxTaskHandle = nullptr;
     constexpr uint16_t RX_BUF_SIZE = 1024;
 
     CANRxItem rxBuffer[RX_BUF_SIZE];
@@ -183,6 +193,12 @@ namespace CANRxBuffer
 
     void startTask()
     {
+        if (rxTaskHandle)
+        {
+            vTaskDelete(rxTaskHandle);
+            rxTaskHandle = nullptr;
+        }
+
         xTaskCreatePinnedToCore(task, "can_rx", 4096, NULL, 20, NULL, 1);
     }
 
