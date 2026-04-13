@@ -8,6 +8,7 @@ void transportProcess();
 
 // ===== TX =====
 void transportWrite(const uint8_t* data, size_t len);
+void transportWritePriority(const uint8_t *data, size_t len);
 void transportFlush();
 
 // ===== RX DISPATCH (NEW) =====

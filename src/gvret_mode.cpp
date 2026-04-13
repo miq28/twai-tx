@@ -58,8 +58,8 @@ static uint32_t build_int = 0;
 static void sendKeepAlive()
 {
     uint8_t resp[] = {0xF1, 9, 0xDE, 0xAD};
-    transportWrite(resp, sizeof(resp));
-    // transportWritePriority(resp, sizeof(resp)); // 🔥 changed
+    // transportWrite(resp, sizeof(resp));
+    transportWritePriority(resp, sizeof(resp)); // 🔥 changed
 }
 
 static void sendDeviceInfo()
@@ -73,8 +73,8 @@ static void sendDeviceInfo()
         0,          // auto log
         0           // single wire
     };
-    transportWrite(resp, sizeof(resp));
-    // transportWritePriority(resp, sizeof(resp)); // 🔥 changed
+    // transportWrite(resp, sizeof(resp));
+    transportWritePriority(resp, sizeof(resp)); // 🔥 changed
 }
 
 static void sendCANConfig()
@@ -106,8 +106,9 @@ static void sendCANConfig()
     resp[10] = 0;
     resp[11] = 0;
 
-    transportWrite(resp, 12);
+    // transportWrite(resp, 12);
     // transportWritePriority(resp, 12); // 🔥 changed
+    transportWritePriority(resp, sizeof(resp)); // 🔥 changed
 }
 
 // ===== COMMAND HANDLER =====
@@ -346,7 +347,7 @@ void gvretLoop()
     {
         CANRxItem item;
 
-        int limit = 50; // tune (20–100)
+        int limit = 20; // tune (20–100)
 
         while (limit-- && CANRxBuffer::pop(item))
         {

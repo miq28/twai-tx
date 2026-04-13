@@ -83,15 +83,33 @@ void transportWrite(const uint8_t *data, size_t len)
         size_t sent = netWrite(data, len);
 
         // 🔥 if TCP buffer is full → drop frame (do NOT block)
-        if (sent != len)
+        
+        // if (sent != len)
+        // {
+        //     // 🔥 DROP WHOLE FRAME (never retry partial)
+        //     return;
+        // }
+
+        if (sent == 0)
         {
-            // 🔥 DROP WHOLE FRAME (never retry partial)
-            return;
+            return; // only drop if nothing sent
         }
     }
     else
     {
         // ===== SERIAL =====
+        Serial.write(data, len);
+    }
+}
+
+void transportWritePriority(const uint8_t *data, size_t len)
+{
+    if (netClientConnected())
+    {
+        netWrite(data, len); // 🔥 always send (no drop)
+    }
+    else
+    {
         Serial.write(data, len);
     }
 }
