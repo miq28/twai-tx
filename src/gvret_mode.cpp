@@ -6,8 +6,6 @@
 #include "transport.h"
 
 static bool binaryMode = false;
-static uint32_t lastActivityMs = 0;
-static bool savvyConnected = false;
 static twai_message_t txMsg;
 
 // ===== STATE MACHINE =====
@@ -151,8 +149,6 @@ static void handleCommand(uint8_t cmd)
         break;
 
     case PROTO_KEEPALIVE: // 9
-        lastActivityMs = millis();
-        savvyConnected = true;
         DEBUG_PRINTLN("SavvyCan keep-alive received");
         sendKeepAlive();
         state = IDLE;
@@ -304,7 +300,6 @@ void processIncomingByte(uint8_t b)
     case IDLE:
         if (b == 0xE7)
         {
-            lastActivityMs = millis();
             // enter binary mode (no response required)
             binaryMode = true;
             DEBUG_PRINTLN("Entering binary mode");
@@ -344,23 +339,10 @@ void processIncomingByte(uint8_t b)
 void gvretLoop()
 {
     // ===== only active if SAVVYCAN or recently active =====
-    if (appState.mode != MODE_SAVVYCAN && !savvyConnected)
+    if (appState.mode != MODE_SAVVYCAN)
         return;
 
-    // timeout = 10 seconds (adjust if needed)
-    if (millis() - lastActivityMs > 30000)
-    {
-        // savvyConnected = false;
-        // binaryMode = false;
-        // DEBUG_PRINTLN("SavvyCan connection lost, exiting binary mode");
-        // CANRxBuffer::clear();   // 🔥 important
-        savvyConnected = false;
-        // binaryMode = false;
-        // DO NOT force mode change
-        // DEBUG_PRINTLN("Mode switched to ANALYZER");
-    }
-
-    if (CANDriver::isRunning() && savvyConnected)
+    if (CANDriver::isRunning())
     {
         CANRxItem item;
 
