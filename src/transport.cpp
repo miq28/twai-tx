@@ -10,12 +10,7 @@ static InputContext serialCtx;
 
 void transportInit()
 {
-#if defined(WEACT_STUDIO_CAN485_V1)
-    Serial.begin(2000000);
-#else
     Serial.begin(1000000);
-#endif
-    delay(100);
 
     netInit();
 
@@ -83,7 +78,7 @@ void transportWrite(const uint8_t *data, size_t len)
         size_t sent = netWrite(data, len);
 
         // 🔥 if TCP buffer is full → drop frame (do NOT block)
-        
+
         // if (sent != len)
         // {
         //     // 🔥 DROP WHOLE FRAME (never retry partial)

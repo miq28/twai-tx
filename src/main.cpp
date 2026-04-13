@@ -48,7 +48,7 @@ const char *resetReasonToStr(esp_reset_reason_t r)
 
 void setup()
 {
-    RS485.begin(2000000);
+    RS485.begin(1000000);
     DEBUG("\n=== BOOT ===\n");
     esp_reset_reason_t r = esp_reset_reason();
     DEBUG("Reset reason: %s (%d)\n",
