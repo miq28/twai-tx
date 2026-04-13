@@ -66,6 +66,8 @@ void loop()
 {
     transportProcess();
 
+    gvretLoop();
+
     switch (appState.mode)
     {
     case MODE_GENERATOR:
@@ -83,7 +85,6 @@ void loop()
         break;
 
     case MODE_SAVVYCAN:
-        gvretLoop();
         break;
     }
 

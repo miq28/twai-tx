@@ -61,6 +61,7 @@ static void sendKeepAlive()
 {
     uint8_t resp[] = {0xF1, 9, 0xDE, 0xAD};
     transportWrite(resp, sizeof(resp));
+    // transportWritePriority(resp, sizeof(resp)); // 🔥 changed
 }
 
 static void sendDeviceInfo()
@@ -75,6 +76,7 @@ static void sendDeviceInfo()
         0           // single wire
     };
     transportWrite(resp, sizeof(resp));
+    // transportWritePriority(resp, sizeof(resp)); // 🔥 changed
 }
 
 static void sendCANConfig()
@@ -107,6 +109,7 @@ static void sendCANConfig()
     resp[11] = 0;
 
     transportWrite(resp, 12);
+    // transportWritePriority(resp, 12); // 🔥 changed
 }
 
 // ===== COMMAND HANDLER =====
@@ -340,22 +343,30 @@ void processIncomingByte(uint8_t b)
 
 void gvretLoop()
 {
+    // ===== only active if SAVVYCAN or recently active =====
+    if (appState.mode != MODE_SAVVYCAN && !savvyConnected)
+        return;
+
     // timeout = 10 seconds (adjust if needed)
     if (millis() - lastActivityMs > 10300)
     {
+        // savvyConnected = false;
+        // binaryMode = false;
+        // DEBUG_PRINTLN("SavvyCan connection lost, exiting binary mode");
+        CANRxBuffer::clear();   // 🔥 important
         savvyConnected = false;
         binaryMode = false;
-        DEBUG_PRINTLN("SavvyCan connection lost, exiting binary mode");
-        CANRxBuffer::clear();   // 🔥 important
-        appState.mode = MODE_ANALYZER;
-        DEBUG_PRINTLN("Mode switched to ANALYZER");
+        // DO NOT force mode change
+        // DEBUG_PRINTLN("Mode switched to ANALYZER");
     }
 
     if (CANDriver::isRunning() && savvyConnected)
     {
         CANRxItem item;
 
-        while (CANRxBuffer::pop(item))
+        int limit = 50; // tune (20–100)
+
+        while (limit-- && CANRxBuffer::pop(item))
         {
             const twai_message_t &m = item.msg;
             uint8_t buf[32];

@@ -202,7 +202,7 @@ void netLoop()
 
 size_t netWrite(const uint8_t* data, size_t len)
 {
-    if (client && client->connected() && client->canSend())
+    if (client && client->connected())
     {
         return client->write((const char*)data, len);
     }

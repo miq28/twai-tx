@@ -4,6 +4,7 @@
 #include <string.h>
 #include "debug.h"
 #include "transport.h"
+#include "app_mode.h"
 
 namespace
 {
@@ -130,9 +131,13 @@ void analyzerSetFilter(bool enable, uint32_t id)
 
 void analyzerLoop()
 {
+    if (appState.mode != MODE_ANALYZER) return;
+
     CANRxItem item;
 
-    while (CANRxBuffer::pop(item))
+    int budget = 50;  // 🔥 prevent starvation
+
+    while (budget-- && CANRxBuffer::pop(item))
     {
         if (analyzerCfg.filterEnabled && item.msg.identifier != analyzerCfg.filterId)
             continue;

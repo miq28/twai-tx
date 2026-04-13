@@ -54,53 +54,31 @@ void transportProcess()
     netLoop();
 }
 
-// ===== TX handing
-#define TX_BUF_SIZE 2048
 
-static uint8_t txBuf[TX_BUF_SIZE];
-static volatile uint16_t txHead = 0;
-static volatile uint16_t txTail = 0;
 
-static inline bool txPush(uint8_t b)
-{
-    uint16_t next = (txHead + 1) % TX_BUF_SIZE;
-    if (next == txTail)
-    {
-        // full → drop
-        DEBUG_PRINTLN("[TX] drop");
-        return false;
-    }
-    txBuf[txHead] = b;
-    txHead = next;
-    return true;
-}
+// void transportWrite(const uint8_t *data, size_t len)
+// {
+//     for (size_t i = 0; i < len; i++)
+//     {
+//         txPush(data[i]); // drop if full
+//     }
+// }
 
 void transportWrite(const uint8_t *data, size_t len)
 {
-    for (size_t i = 0; i < len; i++)
+    if (netClientConnected())
     {
-        txPush(data[i]); // drop if full
+        // ===== WIFI (GVRET requires frame atomicity) =====
+        netWrite(data, len);
+    }
+    else
+    {
+        // ===== SERIAL =====
+        Serial.write(data, len);
     }
 }
 
 void transportFlush()
 {
-    uint8_t chunk[128];
-    int n = 0;
-
-    while (txTail != txHead && n < sizeof(chunk))
-    {
-        chunk[n++] = txBuf[txTail];
-        txTail = (txTail + 1) % TX_BUF_SIZE;
-    }
-
-    if (n > 0)
-    {
-        if (netClientConnected())
-        {
-            netWrite(chunk, n);
-        }
-        else
-            Serial.write(chunk, n);
-    }
+    // no-op (kept for compatibility)
 }
