@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include "debug.h"
 #include "transport.h"
+#include "config.h"
 
 static bool binaryMode = false;
 static twai_message_t txMsg;
@@ -205,7 +206,7 @@ static void handleSetupCAN(uint8_t b)
 
         if (enable)
         {
-            CANDriver::reinit(baud, listen);
+            applyCANConfig(baud, listen);
         }
         break;
     }

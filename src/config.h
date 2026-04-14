@@ -58,3 +58,40 @@
 #else
 #define CAN_LOG(...)
 #endif
+
+
+struct Settings
+{
+#if defined(WAVESHARE_ESP32_S3_RS485_CAN)
+#define PREF_NAME "wave_can485" // max 15 characaters
+#elif defined(WEACT_STUDIO_CAN485_V1)
+#define PREF_NAME "weact_can485" // max 15 characaters
+#endif
+    uint32_t CANBaud;
+    uint32_t fdSpeed;
+    bool enabled;
+    bool listenOnly;
+    bool fdMode;
+
+    bool useBinarySerialComm; // use a binary protocol on the serial link or human readable format?
+
+    uint8_t logLevel;   // Level of logging to output on serial line
+    uint8_t systemType; // 0 = A0RET, 1 = EVTV ESP32 Board, 2 = Macchine 5-CAN board
+
+    bool enableBT; // are we enabling bluetooth too?
+    char btName[32];
+    int sendingBus;
+
+    bool enableLawicel;
+
+    // if we're using WiFi then output to serial is disabled (it's far too slow to keep up)
+    uint8_t wifiMode; // 0 = don't use wifi, 1 = connect to an AP, 2 = Create an AP
+    char SSID[32];    // null terminated string for the SSID
+    char WPA2Key[64]; // Null terminated string for the key. Can be a passphase or the actual key
+} __attribute__((__packed__));
+
+extern Settings settings;
+
+void loadSettings();
+
+void applyCANConfig(uint32_t baud, bool listenOnly);

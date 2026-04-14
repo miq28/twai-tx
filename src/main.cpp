@@ -6,6 +6,8 @@
 #include "analyzer_mode.h"
 #include "gvret_mode.h"
 #include "debug.h"
+#include <Preferences.h>
+#include "config.h"
 
 const char *resetReasonToStr(esp_reset_reason_t r)
 {
@@ -54,9 +56,12 @@ void setup()
     DEBUG("Reset reason: %s (%d)\n",
           resetReasonToStr(r), r);
     DEBUG("Free heap before setup: %u\n", ESP.getFreeHeap());
+
+    loadSettings();
+
     transportInit();
     initAppState();
-    CANDriver::init(500000, false);
+    CANDriver::init(settings.CANBaud, settings.listenOnly);
     CANRxBuffer::startTask();
     analyzerInit();
     DEBUG("Free heap after setup: %u\n", ESP.getFreeHeap());

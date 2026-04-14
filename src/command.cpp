@@ -7,6 +7,7 @@
 #include "can_bus.h"
 #include "gvret_mode.h"
 #include "debug.h"
+#include "config.h"
 
 namespace
 {
@@ -224,7 +225,7 @@ void handleCommand(const Command &cmd)
         break;
     }
     case CMD_SET_BAUD:
-        CANDriver::reinit(cmd.value_u32, CANDriver::isListenOnly());
+        applyCANConfig(cmd.value_u32, CANDriver::isListenOnly());
         break;
     case CMD_SET_FPS:
         appState.target_fps = cmd.value_int;
@@ -236,7 +237,7 @@ void handleCommand(const Command &cmd)
         appState.locked_id = cmd.value_int;
         break;
     case CMD_SET_LISTEN:
-        CANDriver::reinit(CANDriver::getCurrentBaud(), cmd.value_bool);
+        applyCANConfig(CANDriver::getCurrentBaud(), cmd.value_bool);
         break;
     case CMD_STATUS:
         DEBUG("Mode:%d Baud:%lu, Running:%s listen-only:%s FPS:%d\n",
