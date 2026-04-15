@@ -59,3 +59,13 @@ lib
 .vscode/launch.json
 .vscode/ipch
 
+# 1. Ignore everything inside the platforms folder
+platforms/**/*
+
+# 2. But do NOT ignore the platforms folder itself
+!platforms/
+
+# 3. (Optional) If you want to keep a README in there to explain 
+# where to put the pioarduino files:
+!platforms/README.md
+
