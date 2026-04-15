@@ -67,7 +67,7 @@ struct Settings
 #elif defined(WEACT_STUDIO_CAN485_V1)
 #define PREF_NAME "weact_can485" // max 15 characaters
 #endif
-    uint32_t CANBaud;`
+    uint32_t CANBaud;
     uint32_t fdSpeed;
     bool enabled;
     bool listenOnly;
