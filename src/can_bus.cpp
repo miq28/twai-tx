@@ -199,7 +199,7 @@ namespace CANRxBuffer
             rxTaskHandle = nullptr;
         }
 
-        xTaskCreatePinnedToCore(task, "can_rx", 4096, NULL, 20, NULL, 1);
+        xTaskCreatePinnedToCore(task, "can_rx", 4096, NULL, 16, NULL, 1);
     }
 
     void clear()
