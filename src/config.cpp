@@ -1,65 +1,95 @@
-// #include "soc/spi_reg.h"
+// // #include "soc/spi_reg.h"
+// // #include "esp_system.h"
+// // #include "esp_chip_info.h"
+// #include "esp_mac.h"
+// // #include "esp_flash.h"
+
+// #include "config.h"
+// #include "can_bus.h"
+// #include "debug.h"
+// #include <Preferences.h>
+// // #include <nvs_flash.h>
 // #include "esp_system.h"
-// #include "esp_chip_info.h"
-#include "esp_mac.h"
+// #include "spi_flash_mmap.h"
+
 // #include "esp_flash.h"
+
+#include "esp_mac.h"
+#include "esp_flash.h"
 
 #include "config.h"
 #include "can_bus.h"
 #include "debug.h"
 #include <Preferences.h>
-// #include <nvs_flash.h>
 #include "esp_system.h"
 #include "spi_flash_mmap.h"
 
-void checkESPBoard()
+void printFlashID()
 {
-    // Flash size
-    Serial.print("Flash size: ");
-    Serial.println(ESP.getFlashChipSize() / (1024 * 1024));
-    DEBUG("Flash size: %d MB\n", ESP.getFlashChipSize() / (1024 * 1024));
+    uint32_t flash_id;
 
-    // PSRAM
-    if (psramFound())
+    if (esp_flash_read_id(NULL, &flash_id) == ESP_OK)
     {
-        Serial.print("PSRAM size: ");
-        Serial.println(ESP.getPsramSize() / (1024 * 1024));
-        DEBUG("PSRAM size: %d MB\n ", ESP.getPsramSize() / (1024 * 1024));
+        DEBUG("FLASH ID: %06X\n", flash_id);
     }
     else
     {
-        Serial.println("PSRAM not found");
-        DEBUG_PRINTLN("PSRAM not found");
+        DEBUG("FLASH ID: read failed\n");
     }
+}
 
-    // DEBUGPORT.print("ESP32 SDK: "); DEBUGPORT.println(ESP.getSdkVersion());
-    // DEBUGPORT.print("ESP32 DEVICE: "); DEBUGPORT.println(GetDeviceHardwareRevision());
-    // DEBUGPORT.print("ESP32 CHIP ID: "); DEBUGPORT.println((uint32_t)ESP.getEfuseMac(), HEX);
-    // DEBUGPORT.print("ESP32 CPU CORES: "); DEBUGPORT.println(ESP.getChipCores());
-    // DEBUGPORT.print("ESP32 CPU FREQ: "); DEBUGPORT.print(getCpuFrequencyMhz()); DEBUGPORT.println(" MHz");
-    // DEBUGPORT.print("ESP32 XTAL FREQ: "); DEBUGPORT.print(getXtalFrequencyMhz()); DEBUGPORT.println(" MHz");
-    // DEBUGPORT.print("ESP32 APB FREQ: "); DEBUGPORT.print(getApbFrequency() / 1000000.0, 1); DEBUGPORT.println(" MHz");
-    // DEBUGPORT.print("ESP32 FLASH CHIP ID: "); DEBUGPORT.println(ESP_get_FlashChipId());
-    // DEBUGPORT.print("ESP32 FLASH CHIP FREQ: "); DEBUGPORT.print(ESP_getFlashChipSpeed() / 1000000.0, 1); DEBUGPORT.println(" MHz");
-    // DEBUGPORT.print("ESP32 FLASH REAL SIZE: "); DEBUGPORT.print(ESP_getFlashChipRealSize() / (1024.0 * 1024), 2); DEBUGPORT.println(" MB");
-    // //DEBUGPORT.print("ESP32 FLASH SIZE (MAGIC BYTE): "); DEBUGPORT.print(ESP.getFlashChipSize() / (1024.0 * 1024), 2); DEBUGPORT.println(" MB");
-    // DEBUGPORT.print("ESP32 FLASH REAL MODE: "); DEBUGPORT.println(ESP_getFlashChipMode());
-    // DEBUGPORT.print("ESP32 FLASH MODE (MAGIC BYTE): "); DEBUGPORT.print(ESP.getFlashChipMode()); DEBUGPORT.println(", 0=QIO, 1=QOUT, 2=DIO, 3=DOUT");
-    // DEBUGPORT.print("ESP32 RAM SIZE: "); DEBUGPORT.print(ESP.getHeapSize() / 1024.0, 2); DEBUGPORT.println(" KB");
-    // DEBUGPORT.print("ESP32 FREE RAM: "); DEBUGPORT.print(ESP.getFreeHeap() / 1024.0, 2); DEBUGPORT.println(" KB");
-    // DEBUGPORT.print("ESP32 MAX RAM ALLOC: "); DEBUGPORT.print(ESP.getMaxAllocHeap() / 1024.0, 2); DEBUGPORT.println(" KB");
-    // DEBUGPORT.print("ESP32 FREE PSRAM: "); DEBUGPORT.print(ESP.getFreePsram() / 1024.0, 2); DEBUGPORT.println(" KB");
-    // DEBUGPORT.print("ESP32 TOTAL PSRAM: "); DEBUGPORT.print(ESP.getPsramSize() / 1024.0, 2); DEBUGPORT.println(" KB");
+void checkESPBoard()
+{
+    // ===== BASIC =====
+    DEBUG("SDK: %s\n", ESP.getSdkVersion());
+    DEBUG("Chip: %s Rev %u\n", ESP.getChipModel(), ESP.getChipRevision());
+    DEBUG("Cores: %u\n", ESP.getChipCores());
 
-    // // Print MAC address
-    // uint8_t mac[6];
-    // esp_read_mac(mac, ESP_MAC_WIFI_STA);
-    // DEBUGPORT.print("ESP32 MAC: ");
-    // for (int i = 0; i < 6; i++) {
-    //   if (i > 0) DEBUGPORT.print(":");
-    //   DEBUGPORT.print(mac[i], HEX);
-    // }
-    // DEBUGPORT.println();
+    // ===== CLOCK =====
+    DEBUG("CPU: %d MHz\n", getCpuFrequencyMhz());
+    DEBUG("XTAL: %d MHz\n", getXtalFrequencyMhz());
+    DEBUG("APB: %.1f MHz\n", getApbFrequency() / 1000000.0);
+
+    // ===== MAC =====
+    uint64_t mac64 = ESP.getEfuseMac();
+    // DEBUG("MAC (raw): %012llX\n", mac64);
+    DEBUG("MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
+          (uint8_t)(mac64 >> 40),
+          (uint8_t)(mac64 >> 32),
+          (uint8_t)(mac64 >> 24),
+          (uint8_t)(mac64 >> 16),
+          (uint8_t)(mac64 >> 8),
+          (uint8_t)(mac64 >> 0));
+
+    // ===== CHIP ID (derived) =====
+    uint32_t chipId = 0;
+    for (int i = 0; i < 17; i += 8)
+    {
+        chipId |= ((mac64 >> (40 - i)) & 0xFF) << i;
+    }
+    DEBUG("Chip ID: %u (0x%08X)\n", chipId, chipId);
+
+    // ===== FLASH =====
+    printFlashID();
+    DEBUG("Flash Speed: %.1f MHz\n", ESP.getFlashChipSpeed() / 1000000.0);
+    DEBUG("Flash Size: %.2f MB\n", ESP.getFlashChipSize() / (1024.0 * 1024));
+    DEBUG("Flash Mode: %d (0=QIO,1=QOUT,2=DIO,3=DOUT)\n", ESP.getFlashChipMode());
+
+    // ===== RAM =====
+    DEBUG("Heap Total: %.2f KB\n", ESP.getHeapSize() / 1024.0);
+    DEBUG("Heap Free: %.2f KB\n", ESP.getFreeHeap() / 1024.0);
+    DEBUG("Heap Max Alloc: %.2f KB\n", ESP.getMaxAllocHeap() / 1024.0);
+
+    // ===== PSRAM =====
+    if (psramFound())
+    {
+        DEBUG("PSRAM Total: %.2f KB\n", ESP.getPsramSize() / 1024.0);
+        DEBUG("PSRAM Free: %.2f KB\n", ESP.getFreePsram() / 1024.0);
+    }
+    else
+    {
+        DEBUG("PSRAM: not found\n");
+    }
 }
 
 Settings settings;

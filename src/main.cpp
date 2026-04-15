@@ -51,7 +51,9 @@ const char *resetReasonToStr(esp_reset_reason_t r)
 
 void setup()
 {
+    Serial.begin(1000000);
     RS485.begin(1000000);
+    debug_to_serial = true;
     DEBUG("\n=== BOOT ===\n");
     esp_reset_reason_t r = esp_reset_reason();
     DEBUG("Reset reason: %s (%d)\n",
@@ -68,10 +70,13 @@ void setup()
     analyzerInit();
     webInit();
     DEBUG("Free heap after setup: %u\n", ESP.getFreeHeap());
+    debug_to_serial = false;
 }
 
 void loop()
 {
+    debug_to_serial = !(appState.mode == MODE_SAVVYCAN);
+
     transportProcess();
 
     gvretLoop();

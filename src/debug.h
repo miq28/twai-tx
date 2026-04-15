@@ -8,7 +8,10 @@
 
 #ifndef RELEASE
 
-// --- delta timestamp ---
+// ===== RUNTIME CONTROL =====
+inline bool debug_to_serial;   // kontrol Serial output
+
+// ===== DELTA TIMESTAMP =====
 static inline uint32_t dbg_delta_us()
 {
     static uint32_t last = 0;
@@ -18,16 +21,31 @@ static inline uint32_t dbg_delta_us()
     return delta;
 }
 
-// --- main log (tight format) ---
+// ===== MAIN LOG (RS485 + optional Serial) =====
 #define DEBUG(fmt, ...) \
-    do { DEBUGPORT.printf("+%lu|" fmt, dbg_delta_us(), ##__VA_ARGS__); } while (0)
+    do { \
+        uint32_t _t = dbg_delta_us(); \
+        DEBUGPORT.printf("+%lu|" fmt, _t, ##__VA_ARGS__); \
+        if (debug_to_serial) \
+            Serial.printf("+%lu|" fmt, _t, ##__VA_ARGS__); \
+    } while (0)
 
-// --- helpers ---
+// ===== HELPERS =====
 #define DEBUG_PRINT(s) \
-    do { DEBUGPORT.printf("+%lu|%s", dbg_delta_us(), (s)); } while (0)
+    do { \
+        uint32_t _t = dbg_delta_us(); \
+        DEBUGPORT.printf("+%lu|%s", _t, (s)); \
+        if (debug_to_serial) \
+            Serial.printf("+%lu|%s", _t, (s)); \
+    } while (0)
 
 #define DEBUG_PRINTLN(s) \
-    do { DEBUGPORT.printf("+%lu|%s\n", dbg_delta_us(), (s)); } while (0)
+    do { \
+        uint32_t _t = dbg_delta_us(); \
+        DEBUGPORT.printf("+%lu|%s\n", _t, (s)); \
+        if (debug_to_serial) \
+            Serial.printf("+%lu|%s\n", _t, (s)); \
+    } while (0)
 
 #else
 
