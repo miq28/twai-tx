@@ -58,6 +58,7 @@ void setup()
           resetReasonToStr(r), r);
     DEBUG("Free heap before setup: %u\n", ESP.getFreeHeap());
 
+    checkESPBoard();
     loadSettings();
 
     transportInit();
