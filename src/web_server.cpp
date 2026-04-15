@@ -1,0 +1,279 @@
+#include "web_server.h"
+
+#include <ESPAsyncWebServer.h>
+#include <LittleFS.h>
+
+#include "app_mode.h"
+#include "can_bus.h"
+#include "debug.h"
+#include "net_manager.h"
+
+// =======================================================
+// ================= FILE API (MERGED)
+// =======================================================
+
+static File uploadFile;
+
+static void listRecursive(File dir, const String &base, AsyncResponseStream *res, bool &first)
+{
+    File file = dir.openNextFile();
+
+    while (file)
+    {
+        String name = file.name();
+        String path = base + "/" + name;
+
+        if (file.isDirectory())
+        {
+            listRecursive(file, path, res, first);
+        }
+        else
+        {
+            if (!first) res->print(",");
+            first = false;
+
+            res->print("{\"type\":\"file\",\"name\":\"");
+            res->print(name);
+            res->print("\",\"path\":\"");
+            res->print(path);
+            res->print("\",\"size\":");
+            res->print(file.size());
+            res->print("}");
+        }
+
+        file = dir.openNextFile();
+    }
+}
+
+// ===== LIST =====
+static void handleList(AsyncWebServerRequest *req)
+{
+    AsyncResponseStream *res = req->beginResponseStream("application/json");
+    res->print("[");
+
+    bool first = true;
+    File root = LittleFS.open("/");
+    listRecursive(root, "", res, first);
+
+    res->print("]");
+    req->send(res);
+}
+
+// ===== LOAD =====
+static void handleLoad(AsyncWebServerRequest *req)
+{
+    if (!req->hasParam("path"))
+        return req->send(400, "text/plain", "Missing path");
+
+    String path = req->getParam("path")->value();
+
+    File f = LittleFS.open(path, "r");
+    if (f && f.isDirectory())
+    {
+        f.close();
+        return req->send(400, "text/plain", "Is directory");
+    }
+    if (f) f.close();
+
+    if (!LittleFS.exists(path))
+    {
+        if (LittleFS.exists(path + ".gz"))
+            path += ".gz";
+        else
+            return req->send(404, "text/plain", "Not found");
+    }
+
+    String contentType = "text/plain";
+    if (path.endsWith(".html") || path.endsWith(".html.gz")) contentType = "text/html";
+    else if (path.endsWith(".js") || path.endsWith(".js.gz")) contentType = "application/javascript";
+    else if (path.endsWith(".css") || path.endsWith(".css.gz")) contentType = "text/css";
+    else if (path.endsWith(".json") || path.endsWith(".json.gz")) contentType = "application/json";
+
+    AsyncWebServerResponse *response = req->beginResponse(LittleFS, path, contentType);
+
+    if (path.endsWith(".gz"))
+        response->addHeader("Content-Encoding", "gzip");
+
+    req->send(response);
+}
+
+// ===== SAVE =====
+static void handleSave(AsyncWebServerRequest *req,
+                       uint8_t *data,
+                       size_t len,
+                       size_t index,
+                       size_t total)
+{
+    if (index == 0)
+    {
+        if (!req->hasHeader("X-Path"))
+            return req->send(400, "text/plain", "Missing path");
+
+        String path = req->getHeader("X-Path")->value();
+        uploadFile = LittleFS.open(path, "w");
+
+        if (!uploadFile)
+            return req->send(500, "text/plain", "Open failed");
+    }
+
+    if (uploadFile)
+        uploadFile.write(data, len);
+
+    if (index + len == total)
+    {
+        if (uploadFile)
+            uploadFile.close();
+        req->send(200, "text/plain", "OK");
+    }
+}
+
+// ===== DELETE =====
+static void handleDelete(AsyncWebServerRequest *req)
+{
+    if (!req->hasParam("path", true))
+        return req->send(400, "text/plain", "Missing path");
+
+    String path = req->getParam("path", true)->value();
+
+    if (!LittleFS.exists(path))
+        return req->send(404, "text/plain", "Not found");
+
+    LittleFS.remove(path);
+    req->send(200, "text/plain", "OK");
+}
+
+// ===== RENAME =====
+static void handleRename(AsyncWebServerRequest *req)
+{
+    if (!req->hasParam("from", true) || !req->hasParam("to", true))
+        return req->send(400, "text/plain", "Missing params");
+
+    String from = req->getParam("from", true)->value();
+    String to   = req->getParam("to", true)->value();
+
+    if (!LittleFS.exists(from))
+        return req->send(404, "text/plain", "Not found");
+
+    File src = LittleFS.open(from, "r");
+    File dst = LittleFS.open(to, "w");
+
+    uint8_t buf[512];
+    while (src.available())
+    {
+        size_t n = src.read(buf, sizeof(buf));
+        dst.write(buf, n);
+    }
+
+    src.close();
+    dst.close();
+
+    LittleFS.remove(from);
+    req->send(200, "text/plain", "OK");
+}
+
+// =======================================================
+// ================= WEB UI (MERGED)
+// =======================================================
+
+static AsyncWebServer server(80);
+static AsyncWebSocket ws("/ws");
+
+// ===== RING BUFFER =====
+#define WEB_BUF_SIZE 256
+
+static CANRxItem webBuf[WEB_BUF_SIZE];
+static volatile uint16_t webHead = 0;
+static volatile uint16_t webTail = 0;
+
+// ===== PUSH =====
+void webPushFrame(const CANRxItem &item)
+{
+    uint16_t next = (webHead + 1) % WEB_BUF_SIZE;
+    if (next == webTail) return;
+
+    webBuf[webHead] = item;
+    webHead = next;
+}
+
+// ===== STATUS JSON =====
+static String getStatusJson()
+{
+    String s = "{";
+    s += "\"mode\":" + String(appState.mode) + ",";
+    s += "\"baud\":" + String(CANDriver::getCurrentBaud()) + ",";
+    s += "\"running\":" + String(appState.running ? "true" : "false") + ",";
+    s += "\"listen\":" + String(CANDriver::isListenOnly() ? "true" : "false");
+    s += "}";
+    return s;
+}
+
+// ===== WS EVENT =====
+static void onWsEvent(AsyncWebSocket *server,
+                      AsyncWebSocketClient *client,
+                      AwsEventType type,
+                      void *arg,
+                      uint8_t *data,
+                      size_t len)
+{
+    if (type == WS_EVT_CONNECT)
+    {
+        client->text("{\"msg\":\"connected\"}");
+    }
+}
+
+// =======================================================
+// ================= INIT
+// =======================================================
+
+void webInit()
+{
+    if (!LittleFS.begin(true))
+    {
+        DEBUG_PRINTLN("LittleFS mount failed");
+        return;
+    }
+
+    // ===== STATIC =====
+    server.serveStatic("/", LittleFS, "/")
+        .setDefaultFile("index.html");
+
+    // ===== FILE API =====
+    server.on("/list", HTTP_GET, handleList);
+    server.on("/file", HTTP_GET, handleLoad);
+    server.on("/save", HTTP_POST, [](AsyncWebServerRequest *req){}, NULL, handleSave);
+    server.on("/delete", HTTP_POST, handleDelete);
+    server.on("/rename", HTTP_POST, handleRename);
+
+    // ===== STATUS =====
+    server.on("/status", HTTP_GET, [](AsyncWebServerRequest *req)
+    {
+        req->send(200, "application/json", getStatusJson());
+    });
+
+    // ===== MODE =====
+    server.on("/mode", HTTP_POST, [](AsyncWebServerRequest *req)
+    {
+        if (req->hasParam("m", true))
+            appState.mode = (Mode)req->getParam("m", true)->value().toInt();
+
+        req->send(200, "text/plain", "OK");
+    });
+
+    // ===== BAUD =====
+    server.on("/baud", HTTP_POST, [](AsyncWebServerRequest *req)
+    {
+        if (req->hasParam("v", true))
+        {
+            uint32_t b = req->getParam("v", true)->value().toInt();
+            CANDriver::reinit(b, CANDriver::isListenOnly());
+        }
+
+        req->send(200, "text/plain", "OK");
+    });
+
+    // ===== WS =====
+    ws.onEvent(onWsEvent);
+    server.addHandler(&ws);
+
+    server.begin();
+}

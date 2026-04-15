@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Editor</title>
+
+    <style>
+        body {
+            margin: 0;
+            background: #111;
+            color: #0f0;
+            font-family: monospace;
+        }
+
+        #bar {
+            height: 40px;
+            background: #222;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px;
+        }
+
+        #editor {
+            position: absolute;
+            top: 40px;
+            bottom: 0;
+            left: 0;
+            right: 0;
+        }
+
+        input,
+        button {
+            background: #000;
+            color: #0f0;
+            border: 1px solid #333;
+            padding: 4px;
+        }
+
+        #container {
+            display: flex;
+            height: 100vh;
+        }
+
+        #sidebar {
+            width: 220px;
+            background: #181818;
+            border-right: 1px solid #333;
+            overflow-y: auto;
+        }
+
+        #filelist {
+            font-size: 12px;
+        }
+
+        .file {
+            padding: 4px 6px;
+            cursor: pointer;
+            border-bottom: 1px solid #222;
+        }
+
+        .file:hover {
+            background: #033;
+        }
+
+        .dir {
+            color: #6f6;
+        }
+
+        #main {
+            flex: 1;
+            position: relative;
+        }
+
+        #bar {
+            height: 40px;
+            background: #222;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px;
+        }
+
+        #editor {
+            position: absolute;
+            top: 40px;
+            bottom: 0;
+            left: 0;
+            right: 0;
+        }
+
+        .folder {
+            font-weight: bold;
+        }
+
+        .children {
+            margin-left: 12px;
+            display: none;
+        }
+
+        .file.open>.children {
+            display: block;
+        }
+
+        .ctx {
+            position: absolute;
+            background: #111;
+            border: 1px solid #333;
+            display: none;
+            z-index: 1000;
+        }
+
+        .ctx div {
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+
+        .ctx div:hover {
+            background: #033;
+        }
+
+        .file.dir::before {
+            content: "📁 ";
+        }
+
+        .file.dir.open::before {
+            content: "📂 ";
+        }
+
+        .file:not(.dir)::before {
+            content: "📄 ";
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="container">
+
+        <div id="sidebar">
+            <div id="filelist"></div>
+        </div>
+
+        <div id="main">
+            <div id="bar">
+                <input id="path" value="/index.html" style="width:300px">
+                <button onclick="Editor.load()">Load</button>
+                <button onclick="Editor.save()">Save</button>
+                <span id="status"></span>
+            </div>
+
+            <div id="editor"></div>
+        </div>
+
+    </div>
+
+    <div id="ctx" class="ctx">
+        <div onclick="ctxDelete()">Delete</div>
+        <div onclick="ctxRename()">Rename</div>
+    </div>
+
+    <script src="/ace/ace.js"></script>
+    <script src="/editor.js"></script>
+
+</body>
+
+</html>

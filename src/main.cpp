@@ -8,6 +8,7 @@
 #include "debug.h"
 #include <Preferences.h>
 #include "config.h"
+#include "web_server.h"
 
 const char *resetReasonToStr(esp_reset_reason_t r)
 {
@@ -64,6 +65,7 @@ void setup()
     CANDriver::init(settings.CANBaud, settings.listenOnly);
     CANRxBuffer::startTask();
     analyzerInit();
+    webInit();
     DEBUG("Free heap after setup: %u\n", ESP.getFreeHeap());
 }
 
