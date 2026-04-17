@@ -49,6 +49,53 @@ const char *resetReasonToStr(esp_reset_reason_t r)
     }
 }
 
+void stats()
+{
+    static uint32_t lastDrops = 0;
+    static uint32_t lastFrames = 0;
+    static uint32_t lastPrint = 0;
+
+    static uint32_t accumDrops = 0; // 🔥 akumulasi antar print
+
+    uint32_t nowDrops = CANRxBuffer::getDropCount();
+    uint32_t deltaDrops = nowDrops - lastDrops;
+
+    // akumulasi (tidak langsung print)
+    if (deltaDrops > 0)
+    {
+        accumDrops += deltaDrops;
+        lastDrops = nowDrops;
+    }
+
+    if (millis() - lastPrint >= 1000)
+    {
+        lastPrint = millis();
+
+        uint32_t frames = CANRxBuffer::getTotalFrames();
+        uint16_t maxBuf = CANRxBuffer::getMaxUsage();
+        uint16_t curBuf = CANRxBuffer::count();
+
+        uint32_t deltaFrames = frames - lastFrames;
+        lastFrames = frames;
+
+        if (deltaFrames > 0 || accumDrops > 0)
+        {
+            float dropRate = (deltaFrames > 0)
+                ? (100.0f * accumDrops / deltaFrames)
+                : 0;
+
+            DEBUG("CAN: fps=%lu drop=%lu (%.2f%%) buf=%u max=%u\n",
+                  deltaFrames,
+                  accumDrops,
+                  dropRate,
+                  curBuf,
+                  maxBuf);
+
+            accumDrops = 0; // reset setelah print
+        }
+    }
+}
+
 void setup()
 {
     Serial.begin(1000000);
@@ -77,6 +124,16 @@ void loop()
 {
     debug_to_serial = !(appState.mode == MODE_SAVVYCAN);
 
+    static uint32_t lastDrops = 0;
+
+    uint32_t nowDrops = CANRxBuffer::getDropCount();
+
+    if (nowDrops != lastDrops)
+    {
+        DEBUG("⚠️ CAN DROP: %lu\n", nowDrops);
+        lastDrops = nowDrops;
+    }
+
     transportProcess();
 
     gvretLoop();
@@ -103,4 +160,6 @@ void loop()
 
     // ===== TX handing
     transportFlush();
+
+    stats();
 }

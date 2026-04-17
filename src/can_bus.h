@@ -27,4 +27,9 @@ namespace CANRxBuffer
     bool push(const twai_message_t &msg, uint32_t ts);
     void clear();
     void task(void *);
+
+    uint32_t getDropCount();
+    uint32_t getTotalFrames();
+    uint16_t getMaxUsage();
+    void resetStats();
 }
