@@ -100,3 +100,4 @@ void loadSettings();
 
 void applyCANConfig(uint32_t baud, bool listenOnly);
 void changeWifiMode(uint8_t mode);
+void changePrefsString(char * key, const char * str);
