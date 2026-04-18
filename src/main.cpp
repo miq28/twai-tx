@@ -130,7 +130,7 @@ void loop()
 
     if (nowDrops != lastDrops)
     {
-        DEBUG("⚠️ CAN DROP: %lu\n", nowDrops);
+        DEBUG("** CAN OVERWRITE ** : %lu\n", nowDrops);
         lastDrops = nowDrops;
     }
 

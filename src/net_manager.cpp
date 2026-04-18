@@ -195,8 +195,6 @@ void netInit()
     prefs.getString("STA_SSID", settings.STA_SSID, sizeof(settings.STA_SSID));
     prefs.getString("STA_PASS", settings.STA_PASS, sizeof(settings.STA_PASS));
 
-    // prefs.putUChar("wifiMode", 2);
-
     prefs.end();
 
     // settings.wifiMode = 2;

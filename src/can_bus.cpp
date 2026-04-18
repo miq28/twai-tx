@@ -155,6 +155,29 @@ namespace CANRxBuffer
     volatile uint32_t totalFrames = 0;
     volatile uint16_t maxUsage = 0;
 
+    // bool push(const twai_message_t &msg, uint32_t ts)
+    // {
+    //     uint16_t next = (rxHead + 1) % RX_BUF_SIZE;
+
+    //     // hitung usage sebelum insert
+    //     uint16_t used = (rxHead - rxTail + RX_BUF_SIZE) % RX_BUF_SIZE;
+    //     if (used > maxUsage)
+    //         maxUsage = used;
+
+    //     if (next == rxTail) // silently drop frame,
+    //     {
+    //         dropCount++; // 🔥 overflow counter
+    //         return false;
+    //     }
+
+    //     rxBuffer[rxHead].msg = msg;
+    //     rxBuffer[rxHead].timestamp = ts;
+    //     rxHead = next;
+
+    //     totalFrames++;
+    //     return true;
+    // }
+
     bool push(const twai_message_t &msg, uint32_t ts)
     {
         uint16_t next = (rxHead + 1) % RX_BUF_SIZE;
@@ -164,10 +187,12 @@ namespace CANRxBuffer
         if (used > maxUsage)
             maxUsage = used;
 
-        if (next == rxTail) // silently drop frame,
+        if (next == rxTail) // buffer penuh
         {
-            dropCount++; // 🔥 overflow counter
-            return false;
+            // 🔥 overwrite oldest
+            rxTail = (rxTail + 1) % RX_BUF_SIZE;
+
+            dropCount++; // tetap dihitung
         }
 
         rxBuffer[rxHead].msg = msg;
@@ -223,13 +248,13 @@ namespace CANRxBuffer
     }
 }
 
-    uint32_t CANRxBuffer::getDropCount() { return dropCount; }
-    uint32_t CANRxBuffer::getTotalFrames() { return totalFrames; }
-    uint16_t CANRxBuffer::getMaxUsage() { return maxUsage; }
+uint32_t CANRxBuffer::getDropCount() { return dropCount; }
+uint32_t CANRxBuffer::getTotalFrames() { return totalFrames; }
+uint16_t CANRxBuffer::getMaxUsage() { return maxUsage; }
 
-    void CANRxBuffer::resetStats()
-    {
-        dropCount = 0;
-        totalFrames = 0;
-        maxUsage = 0;
-    }
+void CANRxBuffer::resetStats()
+{
+    dropCount = 0;
+    totalFrames = 0;
+    maxUsage = 0;
+}

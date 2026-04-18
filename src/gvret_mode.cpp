@@ -343,7 +343,7 @@ void gvretLoop()
     if (appState.mode != MODE_SAVVYCAN)
         return;
 
-    static uint8_t txBuf[64];
+    static uint8_t txBuf[128];
     static uint16_t txLen = 0;
     static uint32_t lastFlush = 0;
 
