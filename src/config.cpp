@@ -146,3 +146,16 @@ void applyCANConfig(uint32_t baud, bool listenOnly)
     prefs.putBool("listenOnly", listenOnly);
     prefs.end();
 }
+
+void changeWifiMode(uint8_t mode)
+{
+    DEBUG("Wifi mode changed to %d, rebooting esp...\n", mode);
+
+    // Persist
+    Preferences prefs;
+    prefs.begin(PREF_NAME, false);
+    prefs.putUChar("wifiMode", mode);
+    prefs.end();
+    
+    ESP.restart();
+}

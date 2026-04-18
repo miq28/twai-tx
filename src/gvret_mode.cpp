@@ -340,15 +340,17 @@ void processIncomingByte(uint8_t b)
 
 void gvretLoop()
 {
-    // ===== only active if SAVVYCAN or recently active =====
     if (appState.mode != MODE_SAVVYCAN)
         return;
+
+    static uint8_t txBuf[64];
+    static uint16_t txLen = 0;
+    static uint32_t lastFlush = 0;
 
     if (CANDriver::isRunning())
     {
         CANRxItem item;
-
-        int limit = 20; // tune (20–100)
+        int limit = 50;
 
         while (limit-- && CANRxBuffer::pop(item))
         {
@@ -379,7 +381,24 @@ void gvretLoop()
             for (int i = 0; i < dlc; i++) buf[idx++] = m.data[i];
 
             buf[idx++] = 0;
-            transportWrite(buf, idx);
+
+            // 🔥 BATCH APPEND
+            if (txLen + idx > sizeof(txBuf))
+            {
+                transportWrite(txBuf, txLen);
+                txLen = 0;
+            }
+
+            memcpy(txBuf + txLen, buf, idx);
+            txLen += idx;
         }
+    }
+
+    // 🔥 FLUSH (timeout 5ms)
+    if (txLen > 0 && (millis() - lastFlush > 1))
+    {
+        transportWrite(txBuf, txLen);
+        txLen = 0;
+        lastFlush = millis();
     }
 }

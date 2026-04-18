@@ -86,8 +86,10 @@ struct Settings
 
     // if we're using WiFi then output to serial is disabled (it's far too slow to keep up)
     uint8_t wifiMode; // 0 = don't use wifi, 1 = connect to an AP, 2 = Create an AP
-    char SSID[32];    // null terminated string for the SSID
-    char WPA2Key[64]; // Null terminated string for the key. Can be a passphase or the actual key
+    char AP_SSID[32];    // null terminated string for the SSID
+    char AP_PASS[64]; // Null terminated string for the key. Can be a passphase or the actual key
+    char STA_SSID[32];    // null terminated string for the SSID
+    char STA_PASS[64]; // Null terminated string for the key. Can be a passphase or the actual key
 } __attribute__((__packed__));
 
 extern Settings settings;
@@ -97,3 +99,4 @@ void checkESPBoard();
 void loadSettings();
 
 void applyCANConfig(uint32_t baud, bool listenOnly);
+void changeWifiMode(uint8_t mode);

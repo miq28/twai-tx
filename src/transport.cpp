@@ -74,25 +74,23 @@ void transportWrite(const uint8_t *data, size_t len)
 {
     if (netClientConnected())
     {
-        // best effort send
-        size_t sent = netWrite(data, len);
+        size_t totalSent = 0;
 
-        // 🔥 if TCP buffer is full → drop frame (do NOT block)
-
-        // if (sent != len)
-        // {
-        //     // 🔥 DROP WHOLE FRAME (never retry partial)
-        //     return;
-        // }
-
-        if (sent == 0)
+        while (totalSent < len)
         {
-            return; // only drop if nothing sent
+            size_t sent = netWrite(data + totalSent, len - totalSent);
+
+            if (sent == 0)
+            {
+                // 🔥 STOP — jangan kirim sisa (biar tidak corrupt)
+                return;
+            }
+
+            totalSent += sent;
         }
     }
     else
     {
-        // ===== SERIAL =====
         Serial.write(data, len);
     }
 }

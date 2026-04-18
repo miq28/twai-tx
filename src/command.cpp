@@ -194,6 +194,13 @@ bool parseCommand(char *buf, Command &cmd)
         return true;
     }
 
+    if (strncmp(buf, "wifimode ", 9) == 0)
+    {
+        cmd.type = CMD_SET_WIFIMODE;
+        cmd.value_u8 = atoi(buf + 9);
+        return true;
+    }
+
     return false;
 }
 
@@ -294,6 +301,9 @@ void handleCommand(const Command &cmd)
             analyzerSetFilter(true, cmd.value_u32);
             DEBUG("[FILTER] ID:0x%lX\n", cmd.value_u32);
         }
+        break;
+    case CMD_SET_WIFIMODE:
+        changeWifiMode(cmd.value_u8);
         break;
     default:
         DEBUG_PRINTLN("COMMAND VALID BUT HANDLE NOT AVAILABLE! check source code'");

@@ -15,6 +15,7 @@ enum CommandType
     CMD_SET_LISTEN,
     CMD_SET_FORMAT,
     CMD_SET_FILTER,
+    CMD_SET_WIFIMODE,
     CMD_STATUS,
     CMD_RESET,
     CMD_HELP
@@ -26,6 +27,7 @@ struct Command
 
     int value_int;
     uint32_t value_u32;
+    uint8_t value_u8;
 
     char str[16];
     bool value_bool;
