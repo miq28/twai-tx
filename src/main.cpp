@@ -55,16 +55,18 @@ void stats()
     static uint32_t lastFrames = 0;
     static uint32_t lastPrint = 0;
 
-    static uint32_t accumDrops = 0; // 🔥 akumulasi antar print
+    static uint32_t accumOverwrite = 0;
 
     uint32_t nowDrops = CANRxBuffer::getDropCount();
     uint32_t deltaDrops = nowDrops - lastDrops;
 
-    // akumulasi (tidak langsung print)
+    // 🔥 selalu update baseline
+    lastDrops = nowDrops;
+
+    // akumulasi overwrite
     if (deltaDrops > 0)
     {
-        accumDrops += deltaDrops;
-        lastDrops = nowDrops;
+        accumOverwrite += deltaDrops;
     }
 
     if (millis() - lastPrint >= 1000)
@@ -78,20 +80,20 @@ void stats()
         uint32_t deltaFrames = frames - lastFrames;
         lastFrames = frames;
 
-        if (deltaFrames > 0 || accumDrops > 0)
+        if (deltaFrames > 0 || accumOverwrite > 0)
         {
-            float dropRate = (deltaFrames > 0)
-                ? (100.0f * accumDrops / deltaFrames)
-                : 0;
+            float overwriteRate = (deltaFrames > 0)
+                ? (100.0f * accumOverwrite / deltaFrames)
+                : 0.0f;
 
-            DEBUG("CAN: fps=%lu drop=%lu (%.2f%%) buf=%u max=%u\n",
+            DEBUG("CAN: fps=%lu overwrite=%lu (%.2f%%) buf=%u max=%u\n",
                   deltaFrames,
-                  accumDrops,
-                  dropRate,
+                  accumOverwrite,
+                  overwriteRate,
                   curBuf,
                   maxBuf);
 
-            accumDrops = 0; // reset setelah print
+            accumOverwrite = 0;
         }
     }
 }
@@ -123,16 +125,6 @@ void setup()
 void loop()
 {
     debug_to_serial = !(appState.mode == MODE_SAVVYCAN);
-
-    static uint32_t lastDrops = 0;
-
-    uint32_t nowDrops = CANRxBuffer::getDropCount();
-
-    if (nowDrops != lastDrops)
-    {
-        DEBUG("** CAN OVERWRITE ** : %lu\n", nowDrops);
-        lastDrops = nowDrops;
-    }
 
     transportProcess();
 
