@@ -147,6 +147,8 @@
                 <input id="path" value="/index.html" style="width:300px">
                 <button onclick="Editor.load()">Load</button>
                 <button onclick="Editor.save()">Save</button>
+                <button onclick="newFile()">New</button>
+                <button onclick="uploadFile()">Upload</button>
                 <span id="status"></span>
             </div>
 
@@ -162,6 +164,8 @@
     </div>
 
     <script src="/ace/ace.js"></script>
+    <script src="/ace/ext-searchbox.js"></script>
+    <script src="/ace/ext-beautify.js"></script>
     <script src="/editor/editor.js"></script>
 
 </body>

@@ -102,6 +102,7 @@ static void handleLoad(AsyncWebServerRequest *req)
         contentType = "application/json";
 
     AsyncWebServerResponse *response = req->beginResponse(LittleFS, path, contentType);
+    response->addHeader("Content-Disposition", "attachment; filename=\"" + String(path.substring(path.lastIndexOf("/") + 1)) + "\"");
 
     if (path.endsWith(".gz"))
         response->addHeader("Content-Encoding", "gzip");
@@ -122,6 +123,14 @@ static void handleSave(AsyncWebServerRequest *req,
             return req->send(400, "text/plain", "Missing path");
 
         String path = req->getHeader("X-Path")->value();
+
+        // 🔥 prevent overwrite ONLY for New (empty file creation)
+        if (len == 1 && LittleFS.exists(path))
+        {
+            req->send(409, "text/plain", "File exists");
+            return;
+        }
+
         uploadFile = LittleFS.open(path, "w");
 
         if (!uploadFile)

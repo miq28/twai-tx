@@ -8,6 +8,13 @@ const Editor = (function () {
         showPrintMargin: false,
         useWorker: false // REQUIRED for ESP
     });
+    el.commands.addCommand({
+        name: "beautify",
+        bindKey: { win: "Ctrl-B", mac: "Command-B" },
+        exec: function(editor) {
+            ace.require("ace/ext/beautify").beautify(editor.session);
+        }
+    });
 
     function setMode(name) {
         const n = name.toLowerCase();
@@ -296,18 +303,26 @@ async function ctxRename() {
     loadTree();
 }
 
-function ctxDownload() {
+async function ctxDownload() {
     if (!ctxPath) return;
 
-    // trigger browser download
+    const res = await fetch("/file?path=" + encodeURIComponent(ctxPath));
+    const blob = await res.blob();
+
+    const filename = ctxPath.split("/").pop();
+
+    const url = URL.createObjectURL(blob);
+
     const a = document.createElement("a");
-    a.href = "/file?path=" + encodeURIComponent(ctxPath);
-    a.download = ctxPath.split("/").pop(); // filename only
+    a.href = url;
+    a.download = filename;
+
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-}
 
+    URL.revokeObjectURL(url);
+}
 // ===== TREE BUILD =====
 function buildTree(files) {
     const root = {};
@@ -413,6 +428,61 @@ async function loadTree() {
     root.innerHTML = "";
 
     renderTree(tree, root, "");
+}
+
+// ===== SIMPLE FILE ACTIONS =====
+
+function newFile() {
+    const name = prompt("New file name:", "new.txt");
+    if (!name) return;
+
+    const path = "/" + name;
+
+    fetch("/save", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/octet-stream",
+            "X-Path": path
+        },
+        body: new TextEncoder().encode("\n")
+    }).then(res => {
+        if (res.status === 409) {
+            alert("File already exists");
+            return;
+        }
+    
+        document.getElementById("path").value = path;
+        loadTree();
+        Editor.load();
+    });
+}
+
+function uploadFile() {
+    const input = document.createElement("input");
+    input.type = "file";
+
+    input.onchange = async () => {
+        const file = input.files[0];
+        if (!file) return;
+
+        const path = "/" + file.name;
+        const buf = await file.arrayBuffer();
+
+        await fetch("/save", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/octet-stream",
+                "X-Path": path
+            },
+            body: buf
+        });
+
+        document.getElementById("path").value = path;
+        loadTree();
+        Editor.load();
+    };
+
+    input.click();
 }
 
 document.body.ondragover = (e) => e.preventDefault();
