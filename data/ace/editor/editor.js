@@ -31,6 +31,8 @@ const Editor = (function () {
 
     function setTheme(name) {
         el.setTheme("ace/theme/" + name);
+        // ✅ save selection
+        localStorage.setItem("theme", name);
     }
 
     function setMode(name) {
@@ -275,7 +277,7 @@ const Editor = (function () {
         load,
         save,
         setStatus, // ✅ expose it
-        setTheme   // ✅ add this
+        setTheme // ✅ add this
     };
 
 })();
@@ -633,7 +635,15 @@ window.addEventListener("beforeunload", function (e) {
 
 // auto-load on open
 window.onload = () => {
+    // ✅ restore theme first
+    const saved = localStorage.getItem("theme");
+    if (saved) {
+        Editor.setTheme(saved);
+
+        // also update dropdown UI
+        const sel = document.getElementById("themeSelect");
+        if (sel) sel.value = saved;
+    }
     Editor.load();
-    // loadList("/");
     loadTree("/");
 };

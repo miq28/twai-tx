@@ -7,39 +7,43 @@
 </head>
 <body>
 
-<div id="nav">
-    <button onclick="setMode(0)">Analyzer</button>
-    <button onclick="setMode(1)">Generator</button>
-    <button onclick="location.href='/savvycan.html'">SavvyCAN</button>
-    <button onclick="location.href='/editor/editor.html'">Editor</button>
-</div>
+    <div id="nav">
+        <button onclick="setMode(0)">Analyzer</button>
+        <button onclick="setMode(1)">Generator</button>
+        <button onclick="location.href='/savvycan.html'">SavvyCAN</button>
+        <button onclick="location.href='/editor/editor.html'">Editor</button>
+    </div>
 
-<h2>SavvyCAN Mode</h2>
+    <h2>SavvyCAN Mode</h2>
 
-<div id="status">Checking...</div>
+    <div id="status">
+        Checking...
+    </div>
 
-<script>
-async function setMode(m) {
-    await fetch('/mode', {
-        method: 'POST',
-        body: `m=${m}`,
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'}
-    });
+    <script>
+        async function setMode(m) {
+            await fetch('/mode', {
+                method: 'POST',
+                body: `m=${m}`,
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                }
+            });
 
-    if (m === 0) location.href = "/analyzer.html";
-    if (m === 1) location.href = "/generator.html";
-}
+            if (m === 0) location.href = "/analyzer.html";
+            if (m === 1) location.href = "/generator.html";
+        }
 
-async function update() {
-    const res = await fetch('/status');
-    const s = await res.json();
-    document.getElementById("status").innerText =
-        `Mode=${s.mode} Baud=${s.baud}`;
-}
+        async function update() {
+            const res = await fetch('/status');
+            const s = await res.json();
+            document.getElementById("status").innerText =
+            `Mode=${s.mode} Baud=${s.baud}`;
+        }
 
-setInterval(update, 1000);
-update();
-</script>
+        setInterval(update, 1000);
+        update();
+    </script>
 
 </body>
 </html>

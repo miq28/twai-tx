@@ -15,7 +15,8 @@ const Editor = (function () {
         bindKey: {
             win: "Ctrl-B", mac: "Command-B"
         },
-        exec: function (editor) {
+        exec: async function(editor) {
+            await loadAceExt("beautify");
             ace.require("ace/ext/beautify").beautify(editor.session);
         }
     });
@@ -29,28 +30,38 @@ const Editor = (function () {
         }
     });
 
-    function setMode(name) {
-        const n = name.toLowerCase();
-
-        if (n.endsWith(".js")) el.session.setMode("ace/mode/javascript");
-        else if (n.endsWith(".json")) el.session.setMode("ace/mode/json");
-        else if (n.endsWith(".css")) el.session.setMode("ace/mode/css");
-        else if (n.endsWith(".cpp") || n.endsWith(".h"))
-            el.session.setMode("ace/mode/c_cpp");
-        else if (n.endsWith(".txt"))
-            el.session.setMode("ace/mode/text");
-        else if (n.endsWith(".py"))
-            el.session.setMode("ace/mode/python");
-        else if (n.endsWith(".ini"))
-            el.session.setMode("ace/mode/ini");
-        else if (n.endsWith(".csv"))
-            el.session.setMode("ace/mode/csv");
-        else
-            el.session.setMode("ace/mode/html");
+    function setTheme(name) {
+        el.setTheme("ace/theme/" + name);
+        // ✅ save selection
+        localStorage.setItem("theme", name);
     }
 
-    function setStatus(s) {
-        document.getElementById("status").innerText = s;
+    async function setMode(name) {
+        const n = name.toLowerCase();
+
+        let mode = "html";
+
+        if (n.endsWith(".js")) mode = "javascript";
+        else if (n.endsWith(".json")) mode = "json";
+        else if (n.endsWith(".css")) mode = "css";
+        else if (n.endsWith(".cpp") || n.endsWith(".h")) mode = "c_cpp";
+        else if (n.endsWith(".txt")) mode = "text";
+        else if (n.endsWith(".py")) mode = "python";
+        else if (n.endsWith(".ini")) mode = "ini";
+        else if (n.endsWith(".csv")) mode = "csv";
+
+        await loadAceMode(mode);
+
+        el.session.setMode("ace/mode/" + mode);
+    }
+
+    function setStatus(s, state = "") {
+        const el = document.getElementById("status");
+        el.innerText = s;
+
+        el.classList.remove("dirty", "clean");
+
+        if (state) el.classList.add(state);
     }
 
     async function load() {
@@ -131,9 +142,9 @@ const Editor = (function () {
             if (total <= MAX_SIZE && updates <= MAX_UPDATES)
                 el.setReadOnly(false);
 
-            setMode(path);
+            await setMode(path);
             isDirty = false;
-            setStatus("Loaded");
+            setStatus("Loaded", "clean");
 
         } catch (e) {
             setStatus("Fail");
@@ -161,7 +172,7 @@ const Editor = (function () {
 
         el.session.insert(
             {
-                row: row < 0 ? 0 : row, column: Number.MAX_SAFE_INTEGER
+                row: row < 0 ? 0: row, column: Number.MAX_SAFE_INTEGER
             },
             text
         );
@@ -180,7 +191,7 @@ const Editor = (function () {
 
                     hex += b.toString(16).padStart(2, "0") + " ";
                     ascii += (b >= 32 && b <= 126)
-                        ? String.fromCharCode(b) : ".";
+                    ? String.fromCharCode(b): ".";
                 } else {
                     hex += "   ";
                     ascii += " ";
@@ -239,7 +250,7 @@ const Editor = (function () {
             }
 
             isDirty = false;
-            setStatus("Saved");
+            setStatus("Saved", "clean");
         } catch {
             setStatus("Fail");
         }
@@ -249,7 +260,7 @@ const Editor = (function () {
         if (!isDirty) {
             isDirty = true;
             // setStatus("Modified");
-            setStatus("● Modified");
+            setStatus("● Modified", "dirty");
         }
     });
 
@@ -264,7 +275,9 @@ const Editor = (function () {
 
     return {
         load,
-        save
+        save,
+        setStatus, // ✅ expose it
+        setTheme // ✅ add this
     };
 
 })();
@@ -394,74 +407,74 @@ function buildTree(files) {
 function renderTree(node, container, basePath = "") {
 
     Object.keys(node)
-        .sort((a,
-            b) => {
-            const A = Object.keys(node[a].__children).length > 0;
-            const B = Object.keys(node[b].__children).length > 0;
-            return (B - A) || a.localeCompare(b);
-        })
-        .forEach(name => {
+    .sort((a,
+        b) => {
+        const A = Object.keys(node[a].__children).length > 0;
+        const B = Object.keys(node[b].__children).length > 0;
+        return (B - A) || a.localeCompare(b);
+    })
+    .forEach(name => {
 
-            const item = node[name];
-            const fullPath = basePath + "/" + name;
+        const item = node[name];
+        const fullPath = basePath + "/" + name;
 
-            const isDir = Object.keys(item.__children).length > 0;
+        const isDir = Object.keys(item.__children).length > 0;
 
-            const div = document.createElement("div");
+        const div = document.createElement("div");
 
-            div.classList.add("file");
+        div.classList.add("file");
 
-            if (isDir) {
-                div.classList.add("dir");
-            } else {
-                div.classList.add("file-item"); // avoid duplicate "file"
-            }
+        if (isDir) {
+            div.classList.add("dir");
+        } else {
+            div.classList.add("file-item"); // avoid duplicate "file"
+        }
 
-            const meta = item.__meta;
+        const meta = item.__meta;
 
-            div.innerHTML = `
+        div.innerHTML = `
         <span class="label">${name}</span>
-        <span style="color:#888"> ${meta.size ? `(${meta.size})` : ""}</span>
+        <span style="color:#888"> ${meta.size ? `(${meta.size})`: ""}</span>
         `;
 
-            let child = null;
+        let child = null;
+
+        if (isDir) {
+            child = document.createElement("div");
+            child.className = "children";
+            div.appendChild(child);
+        }
+
+        // CLICK
+        div.onclick = (e) => {
+            e.stopPropagation();
 
             if (isDir) {
-                child = document.createElement("div");
-                child.className = "children";
-                div.appendChild(child);
+                div.classList.toggle("open");
+
+                if (!div._loaded) {
+                    renderTree(item.__children, child, fullPath);
+                    div._loaded = true;
+                }
+                return;
             }
 
-            // CLICK
-            div.onclick = (e) => {
-                e.stopPropagation();
+            // 🔥 ADD THIS
+            if (!confirmDiscard()) return;
 
-                if (isDir) {
-                    div.classList.toggle("open");
+            document.getElementById("path").value = fullPath;
+            Editor.load();
+        };
 
-                    if (!div._loaded) {
-                        renderTree(item.__children, child, fullPath);
-                        div._loaded = true;
-                    }
-                    return;
-                }
+        // RIGHT CLICK
+        div.oncontextmenu = (e) => {
+            e.preventDefault();
+            e.stopPropagation(); // 🔥 IMPORTANT
+            showCtx(e.pageX, e.pageY, fullPath);
+        };
 
-                // 🔥 ADD THIS
-                if (!confirmDiscard()) return;
-
-                document.getElementById("path").value = fullPath;
-                Editor.load();
-            };
-
-            // RIGHT CLICK
-            div.oncontextmenu = (e) => {
-                e.preventDefault();
-                e.stopPropagation(); // 🔥 IMPORTANT
-                showCtx(e.pageX, e.pageY, fullPath);
-            };
-
-            container.appendChild(div);
-        });
+        container.appendChild(div);
+    });
 }
 
 async function loadTree() {
@@ -539,6 +552,103 @@ function confirmDiscard() {
     return confirm("You have unsaved changes. Discard?");
 }
 
+function safeLoad() {
+    if (!confirmDiscard()) return;
+    Editor.load();
+}
+
+async function downloadAll() {
+    const zip = new JSZip();
+
+    const res = await fetch("/list?dir=/");
+    const list = await res.json();
+
+    for (const file of list) {
+        if (file.type !== "file") continue;
+
+        Editor.setStatus(`Downloading ${file.name}...`);
+
+        const r = await fetch("/file?path=" + encodeURIComponent(file.path));
+        if (!r.ok) continue;
+
+        const blob = await r.blob();
+
+        // remove leading "/"
+        const name = file.path.substring(1);
+
+        zip.file(name, blob);
+    }
+
+    const content = await zip.generateAsync({
+        type: "blob"
+    });
+
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(content);
+    a.download = "backup.zip";
+    a.click();
+
+    URL.revokeObjectURL(a.href);
+    Editor.setStatus("Download complete", "clean");
+}
+
+async function setTheme(name) {
+    // load theme file dynamically
+    if (!ace.require(`ace/theme/${name}`)) {
+        await new Promise((resolve, reject) => {
+            const s = document.createElement("script");
+            s.src = `/ace/theme-${name}.js`;
+            s.onload = resolve;
+            s.onerror = reject;
+            document.head.appendChild(s);
+        });
+    }
+
+    Editor.setTheme(name);
+    localStorage.setItem("theme", name);
+}
+
+function loadAceExt(name) {
+    return new Promise((resolve, reject) => {
+        try {
+            // already loaded?
+            if (ace.require(`ace/ext/${name}`)) return resolve();
+        } catch (e) {}
+
+        const s = document.createElement("script");
+        s.src = `/ace/ext-${name}.js`;
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+    });
+}
+
+async function loadAceMode(name) {
+    try {
+        if (ace.require(`ace/mode/${name}`)) return;
+    } catch (e) {}
+
+    await new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = `/ace/mode-${name}.js`;
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+    });
+}
+
+// Lazy-load Search (Ctrl+F)
+document.addEventListener("keydown", async (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+
+        await loadAceExt("searchbox");
+
+        const editor = ace.edit("editor");
+        editor.execCommand("find");
+    }
+});
+
 document.body.ondragover = (e) => e.preventDefault();
 
 document.body.ondrop = async (e) => {
@@ -578,7 +688,15 @@ window.addEventListener("beforeunload", function (e) {
 
 // auto-load on open
 window.onload = () => {
+    // ✅ restore theme first
+    const saved = localStorage.getItem("theme") || "monokai";
+    if (saved) {
+        Editor.setTheme(saved);
+
+        // also update dropdown UI
+        const sel = document.getElementById("themeSelect");
+        if (sel) sel.value = saved;
+    }
     Editor.load();
-    // loadList("/");
     loadTree("/");
 };

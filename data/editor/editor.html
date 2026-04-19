@@ -131,6 +131,17 @@
         .file:not(.dir)::before {
             content: "📄 ";
         }
+
+        #status.dirty {
+            color: #ff3333;
+            /*font-weight: bold;*/
+            /* red */
+        }
+
+        #status.clean {
+            color: #0f0;
+            /* green (default) */
+        }
     </style>
 </head>
 
@@ -145,27 +156,39 @@
         <div id="main">
             <div id="bar">
                 <input id="path" value="/index.html" style="width:300px">
-                <button onclick="Editor.load()">Load</button>
+                <!--<button onclick="Editor.load()">Load</button>-->
+                <button onclick="safeLoad()">Load</button>
                 <button onclick="Editor.save()">Save</button>
                 <button onclick="newFile()">New</button>
                 <button onclick="uploadFile()">Upload</button>
+                <button onclick="downloadAll()">Download All</button>
+                <select id="themeSelect" onchange="setTheme(this.value)">
+                    <option value="monokai">Monokai</option>
+                    <option value="github">GitHub</option>
+                    <option value="twilight">Twilight</option>
+                    <option value="terminal">Terminal</option>
+                </select>
                 <span id="status"></span>
             </div>
-
             <div id="editor"></div>
         </div>
 
     </div>
 
     <div id="ctx" class="ctx">
-        <div onclick="ctxDownload()">Download</div>
-        <div onclick="ctxRename()">Rename</div>
-        <div onclick="ctxDelete()">Delete</div>
+        <div onclick="ctxDownload()">
+            Download
+        </div>
+        <div onclick="ctxRename()">
+            Rename
+        </div>
+        <div onclick="ctxDelete()">
+            Delete
+        </div>
     </div>
 
     <script src="/ace/ace.js"></script>
-    <script src="/ace/ext-searchbox.js"></script>
-    <script src="/ace/ext-beautify.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="/editor/editor.js"></script>
 
 </body>
