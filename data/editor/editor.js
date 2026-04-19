@@ -9,17 +9,6 @@ const Editor = (function () {
         useWorker: false // REQUIRED for ESP
     });
 
-    // function setMode(path) {
-    //     if (path.endsWith(".js"))
-    //         el.session.setMode("ace/mode/javascript");
-    //     else if (path.endsWith(".json"))
-    //         el.session.setMode("ace/mode/json");
-    //     else if (path.endsWith(".css"))
-    //         el.session.setMode("ace/mode/css");
-    //     else
-    //         el.session.setMode("ace/mode/html");
-    // }
-
     function setMode(name) {
         const n = name.toLowerCase();
 
@@ -305,6 +294,18 @@ async function ctxRename() {
     });
 
     loadTree();
+}
+
+function ctxDownload() {
+    if (!ctxPath) return;
+
+    // trigger browser download
+    const a = document.createElement("a");
+    a.href = "/file?path=" + encodeURIComponent(ctxPath);
+    a.download = ctxPath.split("/").pop(); // filename only
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
 }
 
 // ===== TREE BUILD =====
