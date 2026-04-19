@@ -9,6 +9,7 @@
 #include "transport.h"
 #include "config.h"
 #include <Preferences.h>
+#include <NetBIOS.h>
 
 // ===== CONFIG =====
 #if defined(WEACT_STUDIO_CAN485_V1)
@@ -41,6 +42,9 @@ static const uint8_t GVRET_MAGIC[4] = {0x1C, 0xEF, 0xAC, 0xED};
 
 // GVRET device type
 #define DEVICE_TYPE_WIFI 0x01
+
+// container for device name
+char deviceName[32];
 
 // ===== OTA STATE =====
 enum OTAState
@@ -120,6 +124,7 @@ static void setupWiFiEvents()
                      // ===== OTA =====
                      initOTAHandlers();
                      startOTA();
+                     NBNS.begin(deviceName);
 
                      // ===== MDNS =====
                      if (!MDNS.begin(MDNS_NAME))
@@ -172,7 +177,6 @@ static void setupServer()
 // ===== PUBLIC =====
 void netInit()
 {
-    char deviceName[32];
     buildDeviceName(deviceName, sizeof(deviceName), BASE_DEVICE_NAME);
 
     Preferences prefs;

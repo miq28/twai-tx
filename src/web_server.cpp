@@ -7,12 +7,18 @@
 #include "can_bus.h"
 #include "debug.h"
 #include "net_manager.h"
+#include "transport.h"
 
 // =======================================================
 // ================= FILE API (MERGED)
 // =======================================================
 
 static File uploadFile;
+
+// ===== STREAM BUFFER (SHARED TCP + WS) =====
+static uint8_t streamBuf[4096]; // bigger = better batching
+static size_t streamLen = 0;
+static uint32_t streamLastFlush = 0;
 
 static void listRecursive(File dir, const String &base, AsyncResponseStream *res, bool &first)
 {
@@ -29,7 +35,8 @@ static void listRecursive(File dir, const String &base, AsyncResponseStream *res
         }
         else
         {
-            if (!first) res->print(",");
+            if (!first)
+                res->print(",");
             first = false;
 
             res->print("{\"type\":\"file\",\"name\":\"");
@@ -73,7 +80,8 @@ static void handleLoad(AsyncWebServerRequest *req)
         f.close();
         return req->send(400, "text/plain", "Is directory");
     }
-    if (f) f.close();
+    if (f)
+        f.close();
 
     if (!LittleFS.exists(path))
     {
@@ -84,10 +92,14 @@ static void handleLoad(AsyncWebServerRequest *req)
     }
 
     String contentType = "text/plain";
-    if (path.endsWith(".html") || path.endsWith(".html.gz")) contentType = "text/html";
-    else if (path.endsWith(".js") || path.endsWith(".js.gz")) contentType = "application/javascript";
-    else if (path.endsWith(".css") || path.endsWith(".css.gz")) contentType = "text/css";
-    else if (path.endsWith(".json") || path.endsWith(".json.gz")) contentType = "application/json";
+    if (path.endsWith(".html") || path.endsWith(".html.gz"))
+        contentType = "text/html";
+    else if (path.endsWith(".js") || path.endsWith(".js.gz"))
+        contentType = "application/javascript";
+    else if (path.endsWith(".css") || path.endsWith(".css.gz"))
+        contentType = "text/css";
+    else if (path.endsWith(".json") || path.endsWith(".json.gz"))
+        contentType = "application/json";
 
     AsyncWebServerResponse *response = req->beginResponse(LittleFS, path, contentType);
 
@@ -149,7 +161,7 @@ static void handleRename(AsyncWebServerRequest *req)
         return req->send(400, "text/plain", "Missing params");
 
     String from = req->getParam("from", true)->value();
-    String to   = req->getParam("to", true)->value();
+    String to = req->getParam("to", true)->value();
 
     if (!LittleFS.exists(from))
         return req->send(404, "text/plain", "Not found");
@@ -189,7 +201,8 @@ static volatile uint16_t webTail = 0;
 void webPushFrame(const CANRxItem &item)
 {
     uint16_t next = (webHead + 1) % WEB_BUF_SIZE;
-    if (next == webTail) return;
+    if (next == webTail)
+        return;
 
     webBuf[webHead] = item;
     webHead = next;
@@ -240,40 +253,88 @@ void webInit()
     // ===== FILE API =====
     server.on("/list", HTTP_GET, handleList);
     server.on("/file", HTTP_GET, handleLoad);
-    server.on("/save", HTTP_POST, [](AsyncWebServerRequest *req){}, NULL, handleSave);
+    server.on("/save", HTTP_POST, [](AsyncWebServerRequest *req) {}, NULL, handleSave);
     server.on("/delete", HTTP_POST, handleDelete);
     server.on("/rename", HTTP_POST, handleRename);
 
     // ===== STATUS =====
     server.on("/status", HTTP_GET, [](AsyncWebServerRequest *req)
-    {
-        req->send(200, "application/json", getStatusJson());
-    });
+              { req->send(200, "application/json", getStatusJson()); });
 
     // ===== MODE =====
     server.on("/mode", HTTP_POST, [](AsyncWebServerRequest *req)
-    {
+              {
         if (req->hasParam("m", true))
             appState.mode = (Mode)req->getParam("m", true)->value().toInt();
 
-        req->send(200, "text/plain", "OK");
-    });
+        req->send(200, "text/plain", "OK"); });
 
     // ===== BAUD =====
     server.on("/baud", HTTP_POST, [](AsyncWebServerRequest *req)
-    {
+              {
         if (req->hasParam("v", true))
         {
             uint32_t b = req->getParam("v", true)->value().toInt();
             CANDriver::reinit(b, CANDriver::isListenOnly());
         }
 
-        req->send(200, "text/plain", "OK");
-    });
+        req->send(200, "text/plain", "OK"); });
 
     // ===== WS =====
     ws.onEvent(onWsEvent);
     server.addHandler(&ws);
 
     server.begin();
+
+    streamInit();
+}
+
+void streamInit()
+{
+    streamLen = 0;
+    streamLastFlush = millis();
+}
+
+void streamPush(const uint8_t *data, size_t len)
+{
+    if (ws.count() == 0)
+    {
+        // no websocket client → skip WS entirely
+        return;
+    }
+
+    // if overflow → flush first
+    if (streamLen + len > sizeof(streamBuf))
+    {
+        if (streamLen > 0)
+        {
+            transportWrite(streamBuf, streamLen);
+            ws.binaryAll(streamBuf, streamLen);
+            streamLen = 0;
+        }
+    }
+
+    memcpy(streamBuf + streamLen, data, len);
+    streamLen += len;
+}
+
+void streamFlush()
+{
+    if (streamLen > 0 && (millis() - streamLastFlush > 5))
+    {
+        // TCP
+        transportWrite(streamBuf, streamLen);
+
+        // WS (safe)
+        for (auto &client : ws.getClients())
+        {
+            if (client.canSend())
+            {
+                client.binary(streamBuf, streamLen);
+            }
+        }
+
+        streamLen = 0;
+        streamLastFlush = millis();
+    }
 }

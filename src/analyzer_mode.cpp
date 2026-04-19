@@ -5,6 +5,7 @@
 #include "debug.h"
 #include "transport.h"
 #include "app_mode.h"
+#include "web_server.h"
 
 namespace
 {
@@ -107,7 +108,8 @@ namespace
         }
 
         frame.pkt.flags = item.msg.flags;
-        transportWrite((uint8_t *)&frame, sizeof(frame));
+        // transportWrite((uint8_t *)&frame, sizeof(frame));
+        streamPush((uint8_t *)&frame, sizeof(frame));
     }
 }
 

@@ -150,6 +150,9 @@ void loop()
         break;
     }
 
+        // 🔥 ADD HERE
+    streamFlush();
+
     // ===== TX handing
     transportFlush();
 
