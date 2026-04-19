@@ -29,6 +29,10 @@ const Editor = (function () {
         }
     });
 
+    function setTheme(name) {
+        el.setTheme("ace/theme/" + name);
+    }
+
     function setMode(name) {
         const n = name.toLowerCase();
 
@@ -270,7 +274,8 @@ const Editor = (function () {
     return {
         load,
         save,
-         setStatus   // ✅ expose it
+        setStatus, // ✅ expose it
+        setTheme   // ✅ add this
     };
 
 })();
@@ -558,7 +563,7 @@ async function downloadAll() {
 
     for (const file of list) {
         if (file.type !== "file") continue;
-        
+
         Editor.setStatus(`Downloading ${file.name}...`);
 
         const r = await fetch("/file?path=" + encodeURIComponent(file.path));
@@ -572,7 +577,9 @@ async function downloadAll() {
         zip.file(name, blob);
     }
 
-    const content = await zip.generateAsync({ type: "blob" });
+    const content = await zip.generateAsync({
+        type: "blob"
+    });
 
     const a = document.createElement("a");
     a.href = URL.createObjectURL(content);
@@ -581,6 +588,10 @@ async function downloadAll() {
 
     URL.revokeObjectURL(a.href);
     Editor.setStatus("Download complete", "clean");
+}
+
+function setTheme(name) {
+    Editor.setTheme(name);
 }
 
 document.body.ondragover = (e) => e.preventDefault();

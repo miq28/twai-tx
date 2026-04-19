@@ -162,6 +162,12 @@
                 <button onclick="newFile()">New</button>
                 <button onclick="uploadFile()">Upload</button>
                 <button onclick="downloadAll()">Download All</button>
+                <select id="themeSelect" onchange="setTheme(this.value)">
+                    <option value="monokai">Monokai</option>
+                    <option value="github">GitHub</option>
+                    <option value="twilight">Twilight</option>
+                    <option value="terminal">Terminal</option>
+                </select>
                 <span id="status"></span>
             </div>
             <div id="editor"></div>
@@ -185,6 +191,10 @@
     <script src="/ace/ext-searchbox.js"></script>
     <script src="/ace/ext-beautify.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="/ace/theme-monokai.js"></script>
+    <script src="/ace/theme-github.js"></script>
+    <script src="/ace/theme-twilight.js"></script>
+    <script src="/ace/theme-terminal.js"></script>
     <script src="/editor/editor.js"></script>
 
 </body>
