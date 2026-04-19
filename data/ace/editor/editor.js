@@ -49,8 +49,13 @@ const Editor = (function () {
             el.session.setMode("ace/mode/html");
     }
 
-    function setStatus(s) {
-        document.getElementById("status").innerText = s;
+    function setStatus(s, state = "") {
+        const el = document.getElementById("status");
+        el.innerText = s;
+
+        el.classList.remove("dirty", "clean");
+
+        if (state) el.classList.add(state);
     }
 
     async function load() {
@@ -133,7 +138,7 @@ const Editor = (function () {
 
             setMode(path);
             isDirty = false;
-            setStatus("Loaded");
+            setStatus("Loaded", "clean");
 
         } catch (e) {
             setStatus("Fail");
@@ -161,7 +166,7 @@ const Editor = (function () {
 
         el.session.insert(
             {
-                row: row < 0 ? 0 : row, column: Number.MAX_SAFE_INTEGER
+                row: row < 0 ? 0: row, column: Number.MAX_SAFE_INTEGER
             },
             text
         );
@@ -180,7 +185,7 @@ const Editor = (function () {
 
                     hex += b.toString(16).padStart(2, "0") + " ";
                     ascii += (b >= 32 && b <= 126)
-                        ? String.fromCharCode(b) : ".";
+                    ? String.fromCharCode(b): ".";
                 } else {
                     hex += "   ";
                     ascii += " ";
@@ -239,7 +244,7 @@ const Editor = (function () {
             }
 
             isDirty = false;
-            setStatus("Saved");
+            setStatus("Saved", "clean");
         } catch {
             setStatus("Fail");
         }
@@ -249,7 +254,7 @@ const Editor = (function () {
         if (!isDirty) {
             isDirty = true;
             // setStatus("Modified");
-            setStatus("● Modified");
+            setStatus("● Modified", "dirty");
         }
     });
 
@@ -264,7 +269,8 @@ const Editor = (function () {
 
     return {
         load,
-        save
+        save,
+         setStatus   // ✅ expose it
     };
 
 })();
@@ -394,74 +400,74 @@ function buildTree(files) {
 function renderTree(node, container, basePath = "") {
 
     Object.keys(node)
-        .sort((a,
-            b) => {
-            const A = Object.keys(node[a].__children).length > 0;
-            const B = Object.keys(node[b].__children).length > 0;
-            return (B - A) || a.localeCompare(b);
-        })
-        .forEach(name => {
+    .sort((a,
+        b) => {
+        const A = Object.keys(node[a].__children).length > 0;
+        const B = Object.keys(node[b].__children).length > 0;
+        return (B - A) || a.localeCompare(b);
+    })
+    .forEach(name => {
 
-            const item = node[name];
-            const fullPath = basePath + "/" + name;
+        const item = node[name];
+        const fullPath = basePath + "/" + name;
 
-            const isDir = Object.keys(item.__children).length > 0;
+        const isDir = Object.keys(item.__children).length > 0;
 
-            const div = document.createElement("div");
+        const div = document.createElement("div");
 
-            div.classList.add("file");
+        div.classList.add("file");
 
-            if (isDir) {
-                div.classList.add("dir");
-            } else {
-                div.classList.add("file-item"); // avoid duplicate "file"
-            }
+        if (isDir) {
+            div.classList.add("dir");
+        } else {
+            div.classList.add("file-item"); // avoid duplicate "file"
+        }
 
-            const meta = item.__meta;
+        const meta = item.__meta;
 
-            div.innerHTML = `
+        div.innerHTML = `
         <span class="label">${name}</span>
-        <span style="color:#888"> ${meta.size ? `(${meta.size})` : ""}</span>
+        <span style="color:#888"> ${meta.size ? `(${meta.size})`: ""}</span>
         `;
 
-            let child = null;
+        let child = null;
+
+        if (isDir) {
+            child = document.createElement("div");
+            child.className = "children";
+            div.appendChild(child);
+        }
+
+        // CLICK
+        div.onclick = (e) => {
+            e.stopPropagation();
 
             if (isDir) {
-                child = document.createElement("div");
-                child.className = "children";
-                div.appendChild(child);
+                div.classList.toggle("open");
+
+                if (!div._loaded) {
+                    renderTree(item.__children, child, fullPath);
+                    div._loaded = true;
+                }
+                return;
             }
 
-            // CLICK
-            div.onclick = (e) => {
-                e.stopPropagation();
+            // 🔥 ADD THIS
+            if (!confirmDiscard()) return;
 
-                if (isDir) {
-                    div.classList.toggle("open");
+            document.getElementById("path").value = fullPath;
+            Editor.load();
+        };
 
-                    if (!div._loaded) {
-                        renderTree(item.__children, child, fullPath);
-                        div._loaded = true;
-                    }
-                    return;
-                }
+        // RIGHT CLICK
+        div.oncontextmenu = (e) => {
+            e.preventDefault();
+            e.stopPropagation(); // 🔥 IMPORTANT
+            showCtx(e.pageX, e.pageY, fullPath);
+        };
 
-                // 🔥 ADD THIS
-                if (!confirmDiscard()) return;
-
-                document.getElementById("path").value = fullPath;
-                Editor.load();
-            };
-
-            // RIGHT CLICK
-            div.oncontextmenu = (e) => {
-                e.preventDefault();
-                e.stopPropagation(); // 🔥 IMPORTANT
-                showCtx(e.pageX, e.pageY, fullPath);
-            };
-
-            container.appendChild(div);
-        });
+        container.appendChild(div);
+    });
 }
 
 async function loadTree() {
@@ -537,6 +543,44 @@ function uploadFile() {
 function confirmDiscard() {
     if (!isDirty) return true;
     return confirm("You have unsaved changes. Discard?");
+}
+
+function safeLoad() {
+    if (!confirmDiscard()) return;
+    Editor.load();
+}
+
+async function downloadAll() {
+    const zip = new JSZip();
+
+    const res = await fetch("/list?dir=/");
+    const list = await res.json();
+
+    for (const file of list) {
+        if (file.type !== "file") continue;
+        
+        Editor.setStatus(`Downloading ${file.name}...`);
+
+        const r = await fetch("/file?path=" + encodeURIComponent(file.path));
+        if (!r.ok) continue;
+
+        const blob = await r.blob();
+
+        // remove leading "/"
+        const name = file.path.substring(1);
+
+        zip.file(name, blob);
+    }
+
+    const content = await zip.generateAsync({ type: "blob" });
+
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(content);
+    a.download = "backup.zip";
+    a.click();
+
+    URL.revokeObjectURL(a.href);
+    Editor.setStatus("Download complete", "clean");
 }
 
 document.body.ondragover = (e) => e.preventDefault();

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>CAN Generator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="nav">
+    <button onclick="setMode(0)">Analyzer</button>
+    <button onclick="location.href='/generator.html'">Generator</button>
+    <button onclick="setMode(2)">SavvyCAN</button>
+    <button onclick="location.href='/editor/editor.html'">Editor</button>
+</div>
+
+<h2>Generator Mode</h2>
+
+ID: <input id="id"><br>
+DATA: <input id="data"><br>
+<button onclick="send()">Send</button>
+
+<script>
+async function setMode(m) {
+    await fetch('/mode', {
+        method: 'POST',
+        body: `m=${m}`,
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'}
+    });
+
+    if (m === 0) location.href = "/analyzer.html";
+    if (m === 2) location.href = "/savvycan.html";
+}
+
+function send() {
+    console.log("TODO: send CAN frame");
+}
+</script>
+
+</body>
+</html>
