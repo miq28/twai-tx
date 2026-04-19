@@ -142,6 +142,46 @@
             color: #0f0;
             /* green (default) */
         }
+
+        #loader {
+            position: fixed;
+            top: 0;
+            right: 0;
+
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+
+            gap: 8px;
+            /* spacing between spinner & text */
+            padding: 10px;
+
+            background: transparent;
+            pointer-events: none;
+
+            color: #0f0;
+            font-size: 12px;
+
+            z-index: 9999;
+        }
+
+        .spinner {
+            width: 28px;
+            height: 28px;
+            border: 3px solid #333;
+            border-top: 3px solid #0f0;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+
+            background: #111;
+            box-shadow: 0 0 6px #000;
+        }
+
+        @keyframes spin {
+            100% {
+                transform: rotate(360deg);
+            }
+        }
     </style>
 </head>
 
@@ -186,11 +226,12 @@
             Delete
         </div>
     </div>
-
+    <div id="loader" style="display:none;">
+        <div class="spinner"></div>
+        <span id="loaderText">Working...</span>
+    </div>
     <script src="/ace/ace.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="/editor/editor.js"></script>
-
 </body>
-
 </html>

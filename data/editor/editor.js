@@ -108,6 +108,8 @@ const Editor = (function () {
             return;
         }
 
+        showLoader();
+
         try {
             const res = await fetch("/file?path=" + encodeURIComponent(path));
 
@@ -183,6 +185,8 @@ const Editor = (function () {
 
         } catch (e) {
             setStatus("Fail");
+        } finally {
+            hideLoader();
         }
     }
 
@@ -266,6 +270,8 @@ const Editor = (function () {
     }
 
     async function save() {
+        showLoader();
+
         const path = document.getElementById("path").value;
         const content = el.getValue();
 
@@ -276,7 +282,7 @@ const Editor = (function () {
                     "Content-Type": "application/octet-stream",
                     "X-Path": path
                 },
-                body: new TextEncoder().encode(content) // 🔥 critical
+                body: new TextEncoder().encode(content)
             });
 
             if (!res.ok) {
@@ -285,9 +291,11 @@ const Editor = (function () {
             }
 
             isDirty = false;
-            setStatus("Saved", "clean");
+            setStatus("Saved");
         } catch {
             setStatus("Fail");
+        } finally {
+            hideLoader(); // ✅ always hide
         }
     }
 
@@ -366,31 +374,47 @@ window.onclick = () => {
 };
 
 async function ctxDelete() {
-    await fetch("/delete",
-        {
+    showLoader();
+
+    try {
+        await fetch("/delete", {
             method: "POST",
             headers: {
                 "Content-Type": "application/x-www-form-urlencoded"
             },
             body: "path=" + ctxPath
         });
-    loadTree();
+
+        loadTree();
+    } finally {
+        hideLoader();   // ✅ always runs
+    }
 }
 
 async function ctxRename() {
-    const to = prompt("Rename to:",
-        ctxPath);
+    const to = prompt("Rename to:", ctxPath);
     if (!to) return;
 
-    await fetch("/rename", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/x-www-form-urlencoded"
-        },
-        body: "from=" + ctxPath + "&to=" + to
-    });
+    showLoader();
 
-    loadTree();
+    try {
+        const res = await fetch("/rename", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded"
+            },
+            body: "from=" + ctxPath + "&to=" + to
+        });
+
+        if (!res.ok) {
+            Editor.setStatus("Rename failed");
+            return;
+        }
+
+        loadTree();
+    } finally {
+        hideLoader();   // ✅ always executed
+    }
 }
 
 async function ctxDownload() {
@@ -594,38 +618,49 @@ function safeLoad() {
 }
 
 async function downloadAll() {
-    const zip = new JSZip();
+    showLoader();
 
-    const res = await fetch("/list?dir=/");
-    const list = await res.json();
+    try {
+        const zip = new JSZip();
 
-    for (const file of list) {
-        if (file.type !== "file") continue;
+        const res = await fetch("/list?dir=/");
+        if (!res.ok) {
+            Editor.setStatus("List failed");
+            return;
+        }
 
-        Editor.setStatus(`Downloading ${file.name}...`);
+        const list = await res.json();
 
-        const r = await fetch("/file?path=" + encodeURIComponent(file.path));
-        if (!r.ok) continue;
+        for (const file of list) {
+            if (file.type !== "file") continue;
 
-        const blob = await r.blob();
+            Editor.setStatus(`Downloading ${file.name}...`);
+            // setLoaderText(`Downloading ${file.name}...`);
 
-        // remove leading "/"
-        const name = file.path.substring(1);
+            const r = await fetch("/file?path=" + encodeURIComponent(file.path));
+            if (!r.ok) continue;
 
-        zip.file(name, blob);
+            const blob = await r.blob();
+
+            const name = file.path.substring(1);
+            zip.file(name, blob);
+        }
+
+        const content = await zip.generateAsync({ type: "blob" });
+
+        const url = URL.createObjectURL(content);
+
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "backup.zip";
+        a.click();
+
+        URL.revokeObjectURL(url);
+
+        Editor.setStatus("Download complete", "clean");
+    } finally {
+        hideLoader();   // ✅ always executed
     }
-
-    const content = await zip.generateAsync({
-        type: "blob"
-    });
-
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(content);
-    a.download = "backup.zip";
-    a.click();
-
-    URL.revokeObjectURL(a.href);
-    Editor.setStatus("Download complete", "clean");
 }
 
 async function setTheme(name) {
@@ -685,6 +720,19 @@ async function loadAceLangTools() {
         s.onerror = reject;
         document.head.appendChild(s);
     });
+}
+
+function setLoaderText(text) {
+    const el = document.getElementById("loaderText");
+    if (el) el.innerText = text;
+}
+
+function showLoader() {
+    document.getElementById("loader").style.display = "flex";
+}
+
+function hideLoader() {
+    document.getElementById("loader").style.display = "none";
 }
 
 // Lazy-load Search (Ctrl+F)
