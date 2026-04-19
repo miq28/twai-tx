@@ -10,6 +10,9 @@
 #include "config.h"
 #include <Preferences.h>
 #include <NetBIOS.h>
+#include "esp_netif.h"
+#include "esp_event.h"
+#include "esp_wifi.h"
 
 // ===== CONFIG =====
 #if defined(WEACT_STUDIO_CAN485_V1)
@@ -21,9 +24,7 @@
 #endif
 #define WIFI_SSID "galaxi"
 #define WIFI_PASS "n1n4iqb4l"
-#define OTA_HOSTNAME "esp32"
 #define OTA_PORT 3232
-#define MDNS_NAME "esp32"
 #define TELNET_PORT 23
 #define OBD_PORT 35000
 
@@ -64,6 +65,15 @@ void buildDeviceName(char *out, size_t outSize, const char *baseName)
     snprintf(out, outSize, "%s_%04X", baseName, shortId);
 }
 
+static void setHostnameEarly(const char *name)
+{
+    esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (netif)
+    {
+        esp_netif_set_hostname(netif, name);
+    }
+}
+
 // ===== OTA HANDLERS (once) =====
 static void initOTAHandlers()
 {
@@ -91,7 +101,7 @@ static void startOTA()
     if (otaState == OTA_READY)
         return;
 
-    ArduinoOTA.setHostname(OTA_HOSTNAME);
+    ArduinoOTA.setHostname(deviceName);
     ArduinoOTA.setPort(OTA_PORT);
     ArduinoOTA.begin();
 
@@ -119,15 +129,22 @@ static void setupWiFiEvents()
 
     WiFi.onEvent([](WiFiEvent_t, WiFiEventInfo_t)
                  {
-                     DEBUG("WiFi GOT IP: %s\n", WiFi.localIP().toString().c_str());
+                     DEBUG("*** WiFi GOT IP: %s ***\n", WiFi.localIP().toString().c_str());
+                     DEBUG("*** HOST NAME: %s ***\n", WiFi.getHostname());
 
                      // ===== OTA =====
                      initOTAHandlers();
                      startOTA();
-                     NBNS.begin(deviceName);
+
+                     // ===== NetBIOS =====
+                     if (!NBNS.begin(deviceName))
+                     {
+                         DEBUG("Error setting up NetBIOS!\n");
+                     } else
+                        DEBUG("NetBIOS started\n");
 
                      // ===== MDNS =====
-                     if (!MDNS.begin(MDNS_NAME))
+                     if (!MDNS.begin(deviceName))
                      {
                          DEBUG("Error setting up MDNS responder!\n");
                      }
@@ -181,7 +198,7 @@ void netInit()
 
     Preferences prefs;
     prefs.begin(PREF_NAME, false);
-    // prefs.clear();
+
     if (!prefs.isKey("wifiMode"))
         prefs.putUChar("wifiMode", 2);
     if (!prefs.isKey("AP_SSID"))
@@ -201,32 +218,89 @@ void netInit()
 
     prefs.end();
 
-    // settings.wifiMode = 2;
-    DEBUG("WIFI MODE: %d\n", settings.wifiMode);
-
     setupWiFiEvents();
 
     if (settings.wifiMode == 1)
     {
         DEBUG_PRINTLN("Wifi mode: STA");
+
         WiFi.mode(WIFI_STA);
+        WiFi.disconnect(true, true); // erase + stop
+        delay(200);
+
+        // ===== INIT LOW LEVEL (REQUIRED FOR HOSTNAME) =====
+        esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+        if (netif)
+        {
+            esp_netif_set_hostname(netif, deviceName);
+        }
+        WiFi.setHostname(deviceName);
         WiFi.setSleep(false);
         WiFi.begin(settings.STA_SSID, settings.STA_PASS);
     }
     else if (settings.wifiMode == 2)
     {
         DEBUG_PRINTLN("Wifi mode: AP");
+
         WiFi.mode(WIFI_AP);
+        WiFi.disconnect(true); // reset state
+        delay(100);
+
+        // set hostname on AP netif
+        esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+        if (netif)
+        {
+            esp_netif_set_hostname(netif, deviceName);
+        }
+        WiFi.setHostname(deviceName);
         WiFi.setSleep(false);
-        WiFi.softAP((const char *)settings.AP_SSID, (const char *)settings.AP_PASS);
+        WiFi.softAP(settings.AP_SSID, settings.AP_PASS);
+
+        DEBUG("AP SSID: %s, PASS: %s\n", settings.AP_SSID, settings.AP_PASS);
     }
     else
-        // Turn Wi-Fi off
+    {
+        DEBUG_PRINTLN("Wifi mode: OFF");
         WiFi.mode(WIFI_OFF);
+    }
 
     setupServer();
 
     DEBUG("NET INIT DONE\n");
+}
+
+#pragma pack(push, 1)
+struct GVRET_UDP
+{
+    uint8_t magic[4];
+    uint8_t version;
+    uint8_t devType;
+    uint16_t port;
+    uint8_t flags;
+};
+#pragma pack(pop)
+
+void sendDiscovery()
+{
+    GVRET_UDP pkt;
+
+    pkt.magic[0] = 0x1C;
+    pkt.magic[1] = 0xEF;
+    pkt.magic[2] = 0xAC;
+    pkt.magic[3] = 0xED;
+
+    pkt.version = 1;
+    pkt.devType = 0x01;     // WIFI
+    pkt.port = TELNET_PORT; // IMPORTANT: little endian (ESP is already LE)
+    pkt.flags = 0;
+
+    udp.beginPacket(broadcastAddr, DISCOVERY_PORT);
+    udp.write((uint8_t *)&pkt, sizeof(pkt));
+    udp.endPacket();
+
+    udp.beginPacket(broadcastAddr, DISCOVERY_PORT + 1);
+    udp.printf("name=%s", deviceName);
+    udp.endPacket();
 }
 
 void netLoop()
@@ -246,9 +320,35 @@ void netLoop()
         {
             lastBroadcast = now;
 
-            udp.beginPacket(broadcastAddr, DISCOVERY_PORT);
+            // udp.beginPacket(broadcastAddr, DISCOVERY_PORT);
+            // // udp.write(GVRET_MAGIC, 4);
+            // udp.write((uint8_t*)deviceName, strlen(deviceName));
+            // udp.endPacket();
+
+            // String ip = WiFi.localIP().toString();
+            // udp.beginPacket(broadcastAddr, DISCOVERY_PORT);
+            // udp.write(GVRET_MAGIC, 4);
+            // udp.print("|ip=");
+            // udp.print(ip);
+            // udp.print("|name=");
+            // udp.print(deviceName);
+            // udp.endPacket();
+
+            // ===== SavvyCAN (DO NOT TOUCH FORMAT) =====
+            udp.beginPacket(broadcastAddr, 17222);
             udp.write(GVRET_MAGIC, 4);
             udp.endPacket();
+
+            // ===== Your discovery =====
+            udp.beginPacket(broadcastAddr, 17223);
+            udp.printf("name=%s;ip=%u.%u.%u.%u;port=%d",
+                       deviceName,
+                       WiFi.localIP()[0], WiFi.localIP()[1],
+                       WiFi.localIP()[2], WiFi.localIP()[3],
+                       TELNET_PORT);
+            udp.endPacket();
+
+            // sendDiscovery();
         }
     }
 }
