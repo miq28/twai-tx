@@ -10,6 +10,33 @@ const Editor = (function () {
         showPrintMargin: false,
         useWorker: false // REQUIRED for ESP
     });
+    // Enable autocomplete on demand
+    el.setOptions({
+        enableBasicAutocompletion: false,
+        enableLiveAutocompletion: false,
+        enableSnippets: false
+    });
+    // Trigger autocomplete with shortcut (Ctrl+Space)
+    el.commands.addCommand({
+        name: "autocomplete",
+        bindKey: {
+            win: "Ctrl-Space", mac: "Ctrl-Space"
+        },
+        exec: async function(editor) {
+            await loadAceLangTools();
+
+            // ✅ remember enabled
+            localStorage.setItem("autocomplete", "1");
+
+            editor.setOptions({
+                enableBasicAutocompletion: true,
+                enableLiveAutocompletion: true,
+                enableSnippets: true
+            });
+
+            editor.execCommand("startAutocomplete");
+        }
+    });
     el.commands.addCommand({
         name: "beautify",
         bindKey: {
@@ -29,6 +56,14 @@ const Editor = (function () {
             Editor.save();
         }
     });
+
+    function enableAutocomplete() {
+        el.setOptions({
+            enableBasicAutocompletion: true,
+            enableLiveAutocompletion: true,
+            enableSnippets: true
+        });
+    }
 
     function setTheme(name) {
         el.setTheme("ace/theme/" + name);
@@ -277,7 +312,8 @@ const Editor = (function () {
         load,
         save,
         setStatus, // ✅ expose it
-        setTheme // ✅ add this
+        setTheme, // ✅ add this
+        enableAutocomplete // ✅ add
     };
 
 })();
@@ -637,6 +673,20 @@ async function loadAceMode(name) {
     });
 }
 
+async function loadAceLangTools() {
+    try {
+        if (ace.require("ace/ext/language_tools")) return;
+    } catch (e) {}
+
+    await new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "/ace/ext-language_tools.js";
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+    });
+}
+
 // Lazy-load Search (Ctrl+F)
 document.addEventListener("keydown", async (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
@@ -692,10 +742,15 @@ window.onload = () => {
     const saved = localStorage.getItem("theme") || "monokai";
     if (saved) {
         Editor.setTheme(saved);
-
         // also update dropdown UI
         const sel = document.getElementById("themeSelect");
         if (sel) sel.value = saved;
+    }
+    // ✅ restore autocomplete if previously enabled
+    if (localStorage.getItem("autocomplete")) {
+        loadAceLangTools().then(() => {
+            Editor.enableAutocomplete();
+        });
     }
     Editor.load();
     loadTree("/");
