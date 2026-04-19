@@ -259,6 +259,10 @@ void webInit()
     server.serveStatic("/", LittleFS, "/")
         .setDefaultFile("index.html");
 
+    // ===== ACE EDITOR =====
+    server.on("/edit", HTTP_GET, [](AsyncWebServerRequest *req)
+              { req->send(LittleFS, "/editor/editor.html", "text/html"); });
+
     // ===== FILE API =====
     server.on("/list", HTTP_GET, handleList);
     server.on("/file", HTTP_GET, handleLoad);
