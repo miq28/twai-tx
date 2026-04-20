@@ -1,12 +1,14 @@
 #pragma once
 
-void ledActivityInit();
-void ledActivityUpdate();
+#include "can_bus.h"   // where CANHealthState is defined
 
-// CAN events
+void ledActivityInit();
+
+// events
 void ledRxEvent();
 void ledTxEvent();
-void ledCanErrorEvent();   // 🔴 renamed
 
-// WiFi status
+// replace old error API
+void ledSetCANHealth(CANHealthState state);
+
 void ledWifiConnected(bool connected);

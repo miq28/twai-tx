@@ -7,6 +7,14 @@ struct CANRxItem
     uint32_t timestamp;
 };
 
+enum CANHealthState
+{
+    CAN_HEALTH_OK,
+    CAN_HEALTH_DEGRADED,
+    CAN_HEALTH_ERROR,
+    CAN_HEALTH_BUS_OFF
+};
+
 namespace CANDriver
 {
     void init(uint32_t baud = 500000, bool listenOnly = false);
@@ -16,7 +24,7 @@ namespace CANDriver
     bool isRunning();
     uint32_t getCurrentBaud();
     bool isListenOnly();
-
+    CANHealthState getCANHealth();
 }
 
 namespace CANRxBuffer
@@ -24,6 +32,7 @@ namespace CANRxBuffer
     bool pop(CANRxItem &out);
     int count();
     void startTask();
+    void stopTask();
     bool push(const twai_message_t &msg, uint32_t ts);
     void clear();
     void task(void *);

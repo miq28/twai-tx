@@ -120,7 +120,7 @@ void setup()
     CANRxBuffer::startTask();
     analyzerInit();
     webInit();
-    // ledActivityInit();
+    ledActivityInit();
     DEBUG("Free heap after setup: %u\n", ESP.getFreeHeap());
     debug_to_serial = false;
 }

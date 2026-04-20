@@ -158,7 +158,7 @@ void changeWifiMode(uint8_t mode)
     ESP.restart();
 }
 
-void changePrefsString(char * key, const char * str)
+void changePrefsString(const char * key, const char * str)
 {
     // Persist
     Preferences prefs;
