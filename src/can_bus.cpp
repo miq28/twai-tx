@@ -9,6 +9,13 @@ namespace CANDriver
     static bool currentListenOnly = false;
     static bool driverRunning = false;
 
+    // ===== auto-recovery =====
+    static bool recoveryActive = false;
+    static uint32_t recoveryStartTime = 0;
+    static uint8_t recoveryAttempts = 0;
+    constexpr uint32_t RECOVERY_TIMEOUT_MS = 1000;
+    constexpr uint8_t MAX_RECOVERY_ATTEMPTS = 3;
+
     bool getTiming(uint32_t baud, twai_timing_config_t &timing)
     {
         switch (baud)
@@ -150,6 +157,75 @@ namespace CANDriver
         return currentListenOnly;
     }
 
+    void handleRecovery()
+    {
+        twai_status_info_t s;
+
+        if (twai_get_status_info(&s) != ESP_OK)
+            return;
+
+        // =========================================================
+        // STEP 1: detect BUS OFF → initiate recovery
+        // =========================================================
+        if (s.state == TWAI_STATE_BUS_OFF)
+        {
+            if (!recoveryActive)
+            {
+                CAN_LOG("[CAN] BUS OFF → initiate recovery\n");
+
+                twai_initiate_recovery();
+
+                recoveryActive = true;
+                recoveryStartTime = millis();
+                recoveryAttempts++;
+            }
+            return;
+        }
+
+        // =========================================================
+        // STEP 2: recovery finished → restart driver
+        // =========================================================
+        if (recoveryActive && s.state == TWAI_STATE_STOPPED)
+        {
+            CAN_LOG("[CAN] Recovery complete → restarting\n");
+
+            if (twai_start() == ESP_OK)
+            {
+                recoveryActive = false;
+                recoveryAttempts = 0;
+            }
+            return;
+        }
+
+        // =========================================================
+        // STEP 3: timeout → fallback to full reinit
+        // =========================================================
+        if (recoveryActive)
+        {
+            if (millis() - recoveryStartTime > RECOVERY_TIMEOUT_MS)
+            {
+                CAN_LOG("[CAN] Recovery timeout\n");
+
+                if (recoveryAttempts >= MAX_RECOVERY_ATTEMPTS)
+                {
+                    CAN_LOG("[CAN] Fallback → full reinit\n");
+
+                    reinit(currentBaud, currentListenOnly);
+
+                    recoveryActive = false;
+                    recoveryAttempts = 0;
+                }
+                else
+                {
+                    CAN_LOG("[CAN] Retry recovery\n");
+
+                    twai_initiate_recovery();
+                    recoveryStartTime = millis();
+                }
+            }
+        }
+    }
+
     CANHealthState currentHealth = CAN_HEALTH_OK;
 
     CANHealthState getCANHealth()
@@ -251,6 +327,11 @@ namespace CANRxBuffer
         while (rxRunning)
         {
             uint32_t now = millis();
+
+            // =========================================================
+            // Auto-recovery handling (non-blocking)
+            // =========================================================
+            CANDriver::handleRecovery();
 
             // =========================================================
             // CAN HEALTH (clean, stable)
