@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <esp_timer.h>
 #include "debug.h"
+#include "led_activity.h"
 
 namespace
 {
@@ -62,6 +63,7 @@ void generatorLoop()
 
     if (CANDriver::send(msg))
     {
+        ledTxEvent();   // 🔥 ONLY on success
         counter++;
         frameCount++;
         lastFrameUs = now;

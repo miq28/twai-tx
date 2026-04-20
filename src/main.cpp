@@ -9,6 +9,8 @@
 #include <Preferences.h>
 #include "config.h"
 #include "web_server.h"
+#include "led_activity.h"
+#include <WiFi.h>
 
 const char *resetReasonToStr(esp_reset_reason_t r)
 {
@@ -118,6 +120,7 @@ void setup()
     CANRxBuffer::startTask();
     analyzerInit();
     webInit();
+    // ledActivityInit();
     DEBUG("Free heap after setup: %u\n", ESP.getFreeHeap());
     debug_to_serial = false;
 }
@@ -157,4 +160,6 @@ void loop()
     transportFlush();
 
     stats();
+    // ledActivityUpdate();
+    // ledWifiConnected(WiFi.status() == WL_CONNECTED);
 }

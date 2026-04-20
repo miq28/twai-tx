@@ -4,11 +4,11 @@ const statusEl = document.getElementById("status");
 
 let currentModule = null;
 
-// define modes (match your enum)
+// match your firmware exactly
 const MODES = [
-    { id: 0, name: "Analyzer", file: "analyzer.js" },
-    { id: 1, name: "Generator", file: "generator.js" },
-    { id: 2, name: "SavvyCAN", file: "savvycan.js" }
+    { id: 0, name: "Generator", file: "generator.js" },
+    { id: 3, name: "Analyzer", file: "analyzer.js" },
+    { id: 4, name: "SavvyCAN", file: "savvycan.js" }
 ];
 
 // populate dropdown
@@ -19,10 +19,14 @@ MODES.forEach(m => {
     modeSelect.appendChild(opt);
 });
 
-// load module dynamically
+// load module
 async function loadMode(modeId) {
     const mode = MODES.find(m => m.id == modeId);
-    if (!mode) return;
+
+    if (!mode) {
+        appDiv.innerHTML = `<h3>Mode ${modeId} not implemented</h3>`;
+        return;
+    }
 
     // cleanup previous
     if (currentModule && currentModule.cleanup)
@@ -60,8 +64,11 @@ modeSelect.onchange = () => {
     const res = await fetch('/status');
     const s = await res.json();
 
+    // reflect current mode
     modeSelect.value = s.mode;
-    statusEl.textContent = `Baud=${s.baud}`;
+
+    statusEl.textContent =
+        `Mode=${s.mode} Baud=${s.baud} Running=${s.running}`;
 
     loadMode(s.mode);
 })();

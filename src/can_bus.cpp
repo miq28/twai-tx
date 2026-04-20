@@ -155,29 +155,6 @@ namespace CANRxBuffer
     volatile uint32_t totalFrames = 0;
     volatile uint16_t maxUsage = 0;
 
-    // bool push(const twai_message_t &msg, uint32_t ts)
-    // {
-    //     uint16_t next = (rxHead + 1) % RX_BUF_SIZE;
-
-    //     // hitung usage sebelum insert
-    //     uint16_t used = (rxHead - rxTail + RX_BUF_SIZE) % RX_BUF_SIZE;
-    //     if (used > maxUsage)
-    //         maxUsage = used;
-
-    //     if (next == rxTail) // silently drop frame,
-    //     {
-    //         dropCount++; // 🔥 overflow counter
-    //         return false;
-    //     }
-
-    //     rxBuffer[rxHead].msg = msg;
-    //     rxBuffer[rxHead].timestamp = ts;
-    //     rxHead = next;
-
-    //     totalFrames++;
-    //     return true;
-    // }
-
     bool push(const twai_message_t &msg, uint32_t ts)
     {
         uint16_t next = (rxHead + 1) % RX_BUF_SIZE;
@@ -187,12 +164,10 @@ namespace CANRxBuffer
         if (used > maxUsage)
             maxUsage = used;
 
-        if (next == rxTail) // buffer penuh
+        if (next == rxTail) // silently drop frame,
         {
-            // 🔥 overwrite oldest
-            rxTail = (rxTail + 1) % RX_BUF_SIZE;
-
-            dropCount++; // tetap dihitung
+            dropCount++; // 🔥 overflow counter
+            return false;
         }
 
         rxBuffer[rxHead].msg = msg;
