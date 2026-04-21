@@ -6,6 +6,23 @@
 #include "esp_twai.h"
 #include "esp_twai_onchip.h"
 
+// === TX queue & monitoring
+static QueueHandle_t canTxQueue;
+static volatile uint32_t txSuccess = 0;
+static volatile uint32_t txDrop = 0;
+static volatile uint32_t txAttempt = 0;
+
+typedef struct
+{
+    twai_message_t msg;
+    uint8_t data[8]; // 🔥 persistent buffer
+} can_tx_item_t;
+#define TX_POOL_SIZE 64
+
+static uint8_t txPool[TX_POOL_SIZE][8];
+static volatile uint32_t txPoolIndex = 0;
+// === TX queue
+
 namespace CANDriver
 {
     static uint32_t currentBaud = 500000;
@@ -55,7 +72,7 @@ namespace CANDriver
             msg.identifier = frame.header.id;
             msg.extd = frame.header.ide;
             msg.rtr = frame.header.rtr;
-            
+
             // 🔥 clamp here
             uint8_t dlc = frame.buffer_len;
             if (dlc > 8)
@@ -107,7 +124,7 @@ namespace CANDriver
             .bit_timing = {
                 .bitrate = baud,
             },
-            .tx_queue_depth = 32,
+            .tx_queue_depth = 64,
             .flags = {
                 .enable_listen_only = listenOnly,
             }};
@@ -139,9 +156,137 @@ namespace CANDriver
         return true;
     }
 
+    static void canTxTask(void *)
+    {
+        can_tx_item_t item;
+
+        while (true)
+        {
+            if (xQueueReceive(canTxQueue, &item, portMAX_DELAY))
+            {
+                // ===== SANITIZE DLC =====
+                uint8_t dlc = item.msg.data_length_code;
+                if (dlc > 8)
+                    dlc = 8;
+
+                // ===== BUILD FRAME =====
+                twai_frame_t frame = {};
+
+                frame.header.id = item.msg.identifier;
+                frame.header.ide = item.msg.extd;
+                frame.header.rtr = item.msg.rtr;
+
+                // ===== IMPORTANT: USE item.data DIRECTLY =====
+                // This is safe now because we BLOCK until driver accepts it
+                frame.buffer = item.data;
+                frame.buffer_len = dlc;
+
+                // ===== BLOCKING TRANSMIT (CRITICAL FIX) =====
+                esp_err_t err = twai_node_transmit(node, &frame, portMAX_DELAY);
+
+                if (err == ESP_OK)
+                {
+                    txSuccess++;
+                }
+                else
+                {
+                    txDrop++;
+
+                    // Rate-limited error log (real errors only)
+                    static uint32_t lastPrint = 0;
+                    if (millis() - lastPrint > 1000)
+                    {
+                        lastPrint = millis();
+                        DEBUG("[CAN] TX error: %d\n", err);
+                    }
+                }
+            }
+        }
+    }
+
+    void flushTxQueue()
+    {
+        if (canTxQueue)
+        {
+            xQueueReset(canTxQueue);
+        }
+    }
+
+    uint32_t getTxAttempt() { return txAttempt; }
+    uint32_t getTxSuccess() { return txSuccess; }
+    uint32_t getTxDrop() { return txDrop; }
+    uint32_t getTxQueueFree()
+    {
+        return uxQueueSpacesAvailable(canTxQueue);
+    }
+    uint32_t getTxQueueUsed()
+    {
+        return uxQueueMessagesWaiting(canTxQueue);
+    }
+
     void init(uint32_t baud, bool listenOnly)
     {
         startDriver(baud, listenOnly);
+
+        // === TX queue
+        // canTxQueue = xQueueCreate(256, sizeof(can_tx_item_t));
+        canTxQueue = xQueueCreate(512, sizeof(can_tx_item_t));
+
+        xTaskCreatePinnedToCore(
+            canTxTask,
+            "can_tx",
+            4096,
+            NULL,
+            14,
+            NULL,
+            1);
+    }
+
+    bool sendAsync(const twai_message_t &msg)
+    {
+        if (!canTxQueue)
+            return false;
+
+        can_tx_item_t item;
+
+        // ===== COPY STRUCT =====
+        item.msg = msg;
+
+        // ===== SANITIZE DLC =====
+        uint8_t dlc = item.msg.data_length_code;
+
+        if (dlc > 8)
+            dlc = 8;
+
+        if (item.msg.rtr)
+            dlc = 0;
+
+        item.msg.data_length_code = dlc;
+
+        // ===== COPY DATA INTO PERSISTENT BUFFER =====
+        if (!item.msg.rtr && dlc > 0)
+        {
+            memcpy(item.data, msg.data, dlc);
+        }
+
+        txAttempt++;
+
+        // ===== QUEUE =====
+        if (xQueueSend(canTxQueue, &item, 0) != pdTRUE)
+        {
+            txDrop++;
+
+            static uint32_t lastPrint = 0;
+            if (millis() - lastPrint > 1000)
+            {
+                lastPrint = millis();
+                DEBUG("[CAN] TX drop: %lu\n", txDrop);
+            }
+
+            return false;
+        }
+
+        return true;
     }
 
     bool reinit(uint32_t baud, bool listenOnly)
@@ -171,18 +316,33 @@ namespace CANDriver
         if (!node)
             return false;
 
-        if (msg.data_length_code > 8)
-            return false;
+        // 🔥 DEBUG + CLAMP HERE
+        uint8_t dlc = msg.data_length_code;
 
-        if (msg.data_length_code > 0 && msg.data == nullptr)
-            return false;
+        if (dlc > 8)
+        {
+            static uint32_t lastWarn = 0;
+            if (millis() - lastWarn > 1000) // rate limit
+            {
+                lastWarn = millis();
+                DEBUG("[WARN] DLC corrupted: %u\n", dlc);
+            }
+            dlc = 8;
+        }
+
+        uint8_t buf[8]; // 🔥 FIX
 
         twai_frame_t frame = {};
         frame.header.id = msg.identifier;
         frame.header.ide = msg.extd;
         frame.header.rtr = msg.rtr;
-        frame.buffer = (uint8_t *)msg.data;
-        frame.buffer_len = msg.data_length_code;
+        frame.buffer = buf;
+        frame.buffer_len = dlc;
+
+        if (!msg.rtr && dlc > 0)
+        {
+            memcpy(buf, msg.data, dlc);
+        }
 
         return twai_node_transmit(node, &frame, 0) == ESP_OK;
     }
@@ -245,7 +405,7 @@ namespace CANRxBuffer
         }
 
         rxBuffer[rxHead].msg = msg;
-        rxBuffer[rxHead].timestamp = 0;
+        rxBuffer[rxHead].timestamp = esp_timer_get_time();
 
         rxHead = next;
         totalFrames = totalFrames + 1;

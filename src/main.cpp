@@ -75,6 +75,7 @@ void stats()
     {
         lastPrint = millis();
 
+        // =========== RX stats
         uint32_t frames = CANRxBuffer::getTotalFrames();
         uint16_t maxBuf = CANRxBuffer::getMaxUsage();
         uint16_t curBuf = CANRxBuffer::count();
@@ -85,10 +86,10 @@ void stats()
         if (deltaFrames > 0 || accumOverwrite > 0)
         {
             float overwriteRate = (deltaFrames > 0)
-                ? (100.0f * accumOverwrite / deltaFrames)
-                : 0.0f;
+                                      ? (100.0f * accumOverwrite / deltaFrames)
+                                      : 0.0f;
 
-            DEBUG("CAN: fps=%lu overwrite=%lu (%.2f%%) buf=%u max=%u\n",
+            DEBUG("[CAN] RX: fps=%lu overwrite=%lu (%.2f%%) buf=%u max=%u\n",
                   deltaFrames,
                   accumOverwrite,
                   overwriteRate,
@@ -97,6 +98,36 @@ void stats()
 
             accumOverwrite = 0;
         }
+
+
+        // =========== TX stats
+        static uint32_t lastTxAttempt = 0;
+        static uint32_t lastTxOk = 0;
+        static uint32_t lastTxDrop = 0;
+
+        uint32_t txAttempt = CANDriver::getTxAttempt();
+        uint32_t txSuccess = CANDriver::getTxSuccess();
+        uint32_t txDrop = CANDriver::getTxDrop();
+
+        uint32_t dTxAttempt = txAttempt - lastTxAttempt;
+        uint32_t dTxOk = txSuccess - lastTxOk;
+        uint32_t dTxDrop = txDrop - lastTxDrop;
+
+        lastTxAttempt = txAttempt;
+        lastTxOk = txSuccess;
+        lastTxDrop = txDrop;
+
+        uint32_t qUsed = CANDriver::getTxQueueUsed();
+        uint32_t qFree = CANDriver::getTxQueueFree();
+
+        // DEBUG("[CAN] TX: fps=%lu drop=%lu q=%lu/%lu\n",
+        DEBUG("[CAN] TX: Target FPS=%lu attempt=%lu ok=%lu drop=%lu q=%lu/%lu\n",
+            appState.target_fps,
+              dTxAttempt,
+              dTxOk,
+              dTxDrop,
+              qUsed,
+              qUsed + qFree);
     }
 }
 
@@ -153,7 +184,7 @@ void loop()
         break;
     }
 
-        // 🔥 ADD HERE
+    // 🔥 ADD HERE
     streamFlush();
 
     // ===== TX handing

@@ -19,11 +19,18 @@ namespace CANDriver
 {
     void init(uint32_t baud = 500000, bool listenOnly = false);
     bool send(const twai_message_t &msg);
+    bool sendAsync(const twai_message_t &msg);
     bool reinit(uint32_t baud, bool listenOnly);
     bool isRunning();
     uint32_t getCurrentBaud();
     bool isListenOnly();
     CANHealthState getCANHealth();
+    uint32_t getTxAttempt();
+    uint32_t getTxSuccess();
+    uint32_t getTxDrop();
+    uint32_t getTxQueueFree();
+    uint32_t getTxQueueUsed();
+    void flushTxQueue();
 }
 
 namespace CANRxBuffer

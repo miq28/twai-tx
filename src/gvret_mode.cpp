@@ -284,7 +284,7 @@ static void handleBuildCAN(uint8_t b)
         else
         {
             // last byte = checksum → ignore
-            CANDriver::send(txMsg);   // ✅ REAL FIX
+            CANDriver::sendAsync(txMsg);
             state = IDLE;
         }
         break;
