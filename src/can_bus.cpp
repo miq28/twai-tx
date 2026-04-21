@@ -12,9 +12,9 @@ namespace CANDriver
     // ===== auto-recovery =====
     static bool recoveryActive = false;
     static uint32_t recoveryStartTime = 0;
-    static uint8_t recoveryAttempts = 0;
+    static uint32_t degradedSince = 0;
     constexpr uint32_t RECOVERY_TIMEOUT_MS = 1000;
-    constexpr uint8_t MAX_RECOVERY_ATTEMPTS = 3;
+    constexpr uint32_t DEGRADED_TIMEOUT_MS = 2000;
 
     bool getTiming(uint32_t baud, twai_timing_config_t &timing)
     {
@@ -26,9 +26,21 @@ namespace CANDriver
         case 800000:
             timing = TWAI_TIMING_CONFIG_800KBITS();
             return true;
+#if defined(WEACT_STUDIO_CAN485_V1)
+        case 500000:
+            // timing.brp = 16;
+            // timing.tseg_1 = 7;
+            // timing.tseg_2 = 2;
+            // timing.sjw = 1;
+            // timing.triple_sampling = false;
+            // return true;
+            timing = TWAI_TIMING_CONFIG_500KBITS();
+            return true;
+#else
         case 500000:
             timing = TWAI_TIMING_CONFIG_500KBITS();
             return true;
+#endif
         case 250000:
             timing = TWAI_TIMING_CONFIG_250KBITS();
             return true;
@@ -164,65 +176,32 @@ namespace CANDriver
         if (twai_get_status_info(&s) != ESP_OK)
             return;
 
-        // =========================================================
-        // STEP 1: detect BUS OFF → initiate recovery
-        // =========================================================
+        // BUS OFF → start recovery
         if (s.state == TWAI_STATE_BUS_OFF)
         {
             if (!recoveryActive)
             {
                 CAN_LOG("[CAN] BUS OFF → initiate recovery\n");
 
-                twai_initiate_recovery();
-
-                recoveryActive = true;
-                recoveryStartTime = millis();
-                recoveryAttempts++;
+                if (twai_initiate_recovery() == ESP_OK)
+                {
+                    recoveryActive = true;
+                }
             }
             return;
         }
 
-        // =========================================================
-        // STEP 2: recovery finished → restart driver
-        // =========================================================
-        if (recoveryActive && s.state == TWAI_STATE_STOPPED)
-        {
-            CAN_LOG("[CAN] Recovery complete → restarting\n");
-
-            if (twai_start() == ESP_OK)
-            {
-                recoveryActive = false;
-                recoveryAttempts = 0;
-            }
-            return;
-        }
-
-        // =========================================================
-        // STEP 3: timeout → fallback to full reinit
-        // =========================================================
+        // WAIT until STOPPED → THEN restart
         if (recoveryActive)
         {
-            if (millis() - recoveryStartTime > RECOVERY_TIMEOUT_MS)
+            if (s.state == TWAI_STATE_STOPPED)
             {
-                CAN_LOG("[CAN] Recovery timeout\n");
+                CAN_LOG("[CAN] Recovery complete → restart\n");
 
-                if (recoveryAttempts >= MAX_RECOVERY_ATTEMPTS)
-                {
-                    CAN_LOG("[CAN] Fallback → full reinit\n");
-
-                    reinit(currentBaud, currentListenOnly);
-
-                    recoveryActive = false;
-                    recoveryAttempts = 0;
-                }
-                else
-                {
-                    CAN_LOG("[CAN] Retry recovery\n");
-
-                    twai_initiate_recovery();
-                    recoveryStartTime = millis();
-                }
+                twai_start(); // 🔥 critical
+                recoveryActive = false;
             }
+            return;
         }
     }
 
@@ -250,7 +229,7 @@ namespace CANDriver
         {
             currentHealth = CAN_HEALTH_ERROR;
         }
-        else if (s.tx_error_counter > 0 || s.rx_error_counter > 0)
+        else if (s.tx_error_counter > 96 || s.rx_error_counter > 96)
         {
             currentHealth = CAN_HEALTH_DEGRADED;
         }
@@ -345,6 +324,15 @@ namespace CANRxBuffer
             if (now - lastHealthPrint > 200)
             {
                 lastHealthPrint = now;
+
+                twai_status_info_t s;
+                if (twai_get_status_info(&s) == ESP_OK)
+                {
+                    CAN_LOG("[CAN DBG] TEC=%d REC=%d state=%d\n",
+                            s.tx_error_counter,
+                            s.rx_error_counter,
+                            s.state);
+                }
 
                 switch (h)
                 {
