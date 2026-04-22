@@ -8,7 +8,6 @@
 #include "debug.h"
 #include "net_manager.h"
 #include "transport.h"
-#include <WebSerial.h>
 
 // =======================================================
 // ================= FILE API (MERGED)
@@ -200,6 +199,18 @@ static void handleRename(AsyncWebServerRequest *req)
 static AsyncWebServer server(80);
 static AsyncWebSocket ws("/ws");
 
+bool wsHasClient()
+{
+    return ws.count() > 0;
+}
+
+void wsSendText(const char* data, size_t len)
+{
+    if (ws.count() == 0) return;
+
+    ws.textAll(data, len);   // 🔥 send as TEXT frame
+}
+
 // ===== RING BUFFER =====
 #define WEB_BUF_SIZE 256
 
@@ -242,25 +253,22 @@ static void onWsEvent(AsyncWebSocket *server,
     {
         client->text("{\"msg\":\"connected\"}");
     }
-}
 
-void webSerialInit()
-{
-    // Initialize WebSerial and attach it to AsyncWebServer instance
-    WebSerial.begin(&server);
+    if (type == WS_EVT_DATA)
+    {
+        AwsFrameInfo *info = (AwsFrameInfo*)arg;
 
-    // Attach callback to handle incoming messages from the WebSerial client
-    WebSerial.onMessage([](uint8_t *data, size_t len)
-                        {
-    Serial.printf("Received %lu bytes from WebSerial: ", len);
-    Serial.write(data, len);
-    Serial.println();
-    WebSerial.println("Received Data...");
-    String d = "";
-    for(size_t i = 0; i < len; i++){
-      d += char(data[i]);
+        if (info->opcode == WS_TEXT)
+        {
+            char buf[128];
+            memcpy(buf, data, len);
+            buf[len] = 0;
+
+            // 🔥 forward to your existing command parser
+            DEBUG("WS Received: %s\n", buf);
+            // handleCommandString(buf);
+        }
     }
-    WebSerial.println(d); });
 }
 
 // =======================================================
@@ -274,8 +282,6 @@ void webInit()
         DEBUG_PRINTLN("LittleFS mount failed");
         return;
     }
-
-    webSerialInit();
 
     // ===== STATIC =====
     server.serveStatic("/", LittleFS, "/")
@@ -372,6 +378,4 @@ void streamFlush()
         streamLen = 0;
         streamLastFlush = millis();
     }
-
-    WebSerial.loop();
 }

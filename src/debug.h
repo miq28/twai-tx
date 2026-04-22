@@ -1,6 +1,7 @@
 #pragma once
 #include "rs485.h"
 #include <Arduino.h>
+#include "web_server.h"
 
 // ===== CONFIG =====
 #define DEBUGPORT RS485
@@ -21,30 +22,71 @@ static inline uint32_t dbg_delta_us()
     return delta;
 }
 
+// ===== WEB SERIAL RATE LIMIT =====
+static inline bool webSerialReady()
+{
+    static uint32_t lastWs = 0;
+
+    // ✔ use your WebSocket as indicator
+    if (!wsHasClient())
+        return false;
+
+    uint32_t now = millis();
+
+    // ✔ rate limit (100 Hz)
+    if (now - lastWs < 10)
+        return false;
+
+    lastWs = now;
+    return true;
+}
+
+
 // ===== MAIN LOG (RS485 + optional Serial) =====
 #define DEBUG(fmt, ...) \
     do { \
         uint32_t _t = dbg_delta_us(); \
-        DEBUGPORT.printf("+%lu|" fmt, _t, ##__VA_ARGS__); \
-        if (debug_to_serial) \
-            Serial.printf("+%lu|" fmt, _t, ##__VA_ARGS__); \
+        char _buf[256]; \
+        int _len = snprintf(_buf, sizeof(_buf), "+%lu|" fmt, _t, ##__VA_ARGS__); \
+        if (_len > 0) \
+        { \
+            DEBUGPORT.write((uint8_t*)_buf, _len); \
+            if (debug_to_serial) \
+                Serial.write((uint8_t*)_buf, _len); \
+            if (webSerialReady()) \
+                wsSendText(_buf, _len); \
+        } \
     } while (0)
 
 // ===== HELPERS =====
 #define DEBUG_PRINT(s) \
     do { \
         uint32_t _t = dbg_delta_us(); \
-        DEBUGPORT.printf("+%lu|%s", _t, (s)); \
-        if (debug_to_serial) \
-            Serial.printf("+%lu|%s", _t, (s)); \
+        char _buf[256]; \
+        int _len = snprintf(_buf, sizeof(_buf), "+%lu|%s", _t, (s)); \
+        if (_len > 0) \
+        { \
+            DEBUGPORT.write((uint8_t*)_buf, _len); \
+            if (debug_to_serial) \
+                Serial.write((uint8_t*)_buf, _len); \
+            if (webSerialReady()) \
+                wsSendText(_buf, _len); \
+        } \
     } while (0)
 
 #define DEBUG_PRINTLN(s) \
     do { \
         uint32_t _t = dbg_delta_us(); \
-        DEBUGPORT.printf("+%lu|%s\n", _t, (s)); \
-        if (debug_to_serial) \
-            Serial.printf("+%lu|%s\n", _t, (s)); \
+        char _buf[256]; \
+        int _len = snprintf(_buf, sizeof(_buf), "+%lu|%s\n", _t, (s)); \
+        if (_len > 0) \
+        { \
+            DEBUGPORT.write((uint8_t*)_buf, _len); \
+            if (debug_to_serial) \
+                Serial.write((uint8_t*)_buf, _len); \
+            if (webSerialReady()) \
+                wsSendText(_buf, _len); \
+        } \
     } while (0)
 
 #else

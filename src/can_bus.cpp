@@ -190,11 +190,11 @@ namespace CANDriver
 
                 if (err == ESP_OK)
                 {
-                    txSuccess++;
+                    txSuccess = txSuccess + 1;
                 }
                 else
                 {
-                    txDrop++;
+                    txDrop = txDrop + 1;
 
                     // Rate-limited error log (real errors only)
                     static uint32_t lastPrint = 0;
@@ -273,18 +273,18 @@ namespace CANDriver
             memcpy(item.data, msg.data, dlc);
         }
 
-        txAttempt++;
+        txAttempt = txAttempt + 1;
 
         // ===== QUEUE =====
         if (uxQueueSpacesAvailable(canTxQueue) == 0) // Prevent useless enqueue when queue is full
         {
-            txDrop++;
+            txDrop = txDrop + 1;
             return false;
         }
 
         if (xQueueSend(canTxQueue, &item, 0) != pdTRUE)
         {
-            txDrop++;
+            txDrop = txDrop + 1;
 
             static uint32_t lastPrint = 0;
             if (millis() - lastPrint > 1000)
