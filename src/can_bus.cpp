@@ -86,6 +86,10 @@ namespace CANDriver
             }
 
             CANRxBuffer::pushFromISR(msg);
+
+            // Activity LED
+            // ✅ ADD THIS LINE HERE
+            ledRxEvent();
         }
 
         return false;
@@ -277,7 +281,7 @@ namespace CANDriver
             txDrop++;
             return false;
         }
-        
+
         if (xQueueSend(canTxQueue, &item, 0) != pdTRUE)
         {
             txDrop++;
