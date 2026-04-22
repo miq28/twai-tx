@@ -8,6 +8,7 @@
 #include "debug.h"
 #include "net_manager.h"
 #include "transport.h"
+#include <WebSerial.h>
 
 // =======================================================
 // ================= FILE API (MERGED)
@@ -243,6 +244,25 @@ static void onWsEvent(AsyncWebSocket *server,
     }
 }
 
+void webSerialInit()
+{
+    // Initialize WebSerial and attach it to AsyncWebServer instance
+    WebSerial.begin(&server);
+
+    // Attach callback to handle incoming messages from the WebSerial client
+    WebSerial.onMessage([](uint8_t *data, size_t len)
+                        {
+    Serial.printf("Received %lu bytes from WebSerial: ", len);
+    Serial.write(data, len);
+    Serial.println();
+    WebSerial.println("Received Data...");
+    String d = "";
+    for(size_t i = 0; i < len; i++){
+      d += char(data[i]);
+    }
+    WebSerial.println(d); });
+}
+
 // =======================================================
 // ================= INIT
 // =======================================================
@@ -254,6 +274,8 @@ void webInit()
         DEBUG_PRINTLN("LittleFS mount failed");
         return;
     }
+
+    webSerialInit();
 
     // ===== STATIC =====
     server.serveStatic("/", LittleFS, "/")
@@ -350,4 +372,6 @@ void streamFlush()
         streamLen = 0;
         streamLastFlush = millis();
     }
+
+    WebSerial.loop();
 }
