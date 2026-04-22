@@ -83,14 +83,6 @@ namespace
             return true;
         }
 
-        if (buf[0] == 'i')
-        {
-            cmd.type = CMD_LOCK_ID;
-            int value = atoi(&buf[1]);
-            cmd.value_int = (value >= 0 && value <= 9) ? value : -1;
-            return true;
-        }
-
         if (strncmp(buf, "fps ", 4) == 0)
         {
             cmd.type = CMD_SET_FPS;
@@ -223,6 +215,22 @@ namespace
             return true;
         }
 
+        if (strncmp(buf, "pattern ", 8) == 0)
+        {
+            cmd.type = CMD_SET_PATTERN;
+            cmd.value_int = atoi(buf + 8);
+            strcpy(cmd.str, "pattern");
+            return true;
+        }
+
+        if (buf[0] == 'i')
+        {
+            cmd.type = CMD_LOCK_ID;
+            int value = atoi(&buf[1]);
+            cmd.value_int = (value >= 0 && value <= 9) ? value : -1;
+            return true;
+        }
+
         if (strncmp(buf, "restart", 7) == 0)
         {
             cmd.type = CMD_RESTART;
@@ -351,6 +359,12 @@ namespace
             break;
         case CMD_SET_STA_PASS:
             changePrefsString("STA_PASS", cmd.str);
+            break;
+        case CMD_SET_PATTERN:
+            canFrameCfg.pattern = cmd.value_int;
+            DEBUG("[CAN] Pattern: %s\n",
+                  canFrameCfg.pattern == 0 ? "simple (fixed DLC, incremental ID)" : canFrameCfg.pattern == 1 ? "realistic (random DLC, mixed ID)"
+                                                        : "unknown");
             break;
         case CMD_RESTART:
             ESP.restart();

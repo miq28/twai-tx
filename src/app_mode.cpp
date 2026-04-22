@@ -20,4 +20,5 @@ void initAppState()
 
     // ===== FRAME CONFIG =====
     canFrameCfg.extended = false;
+    canFrameCfg.pattern = 0; // default = current behavior (0–9)
 }
