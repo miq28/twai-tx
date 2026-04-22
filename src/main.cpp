@@ -99,8 +99,13 @@ void stats()
             accumOverwrite = 0;
         }
 
-
         // =========== TX stats
+        if (!appState.canTxEnabled)
+        {
+            DEBUG("[CAN] TX: DISABLED\n");
+            return;
+        }
+
         static uint32_t lastTxAttempt = 0;
         static uint32_t lastTxOk = 0;
         static uint32_t lastTxDrop = 0;
@@ -119,10 +124,8 @@ void stats()
 
         uint32_t qUsed = CANDriver::getTxQueueUsed();
         uint32_t qFree = CANDriver::getTxQueueFree();
-
-        // DEBUG("[CAN] TX: fps=%lu drop=%lu q=%lu/%lu\n",
         DEBUG("[CAN] TX: Target FPS=%lu attempt=%lu ok=%lu drop=%lu q=%lu/%lu\n",
-            appState.target_fps,
+              appState.target_fps,
               dTxAttempt,
               dTxOk,
               dTxDrop,
