@@ -54,16 +54,18 @@ void generatorLoop()
         msg.data[6] = 0x66;
         msg.data[7] = 0x77;
 
-        if (CANDriver::sendAsync(msg)) // 🔥 queue flood
+        // 🔥 ONLY send if queue has space
+        if (CANDriver::getTxQueueFree() > 0)
         {
-            ledTxEvent(); // 🔥 ONLY on success
-            counter++;
-            frameCount++;
-            lastFrameUs = now;
-
-            if (appState.locked_id < 0)
-                currentId = (currentId + 1) % 10;
+            if (CANDriver::sendAsync(msg))
+            {
+                ledTxEvent();
+                counter++;
+                frameCount++;
+                lastFrameUs = now;
+            }
         }
+
         return;
     }
 

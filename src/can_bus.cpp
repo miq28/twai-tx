@@ -272,6 +272,12 @@ namespace CANDriver
         txAttempt++;
 
         // ===== QUEUE =====
+        if (uxQueueSpacesAvailable(canTxQueue) == 0) // Prevent useless enqueue when queue is full
+        {
+            txDrop++;
+            return false;
+        }
+        
         if (xQueueSend(canTxQueue, &item, 0) != pdTRUE)
         {
             txDrop++;
