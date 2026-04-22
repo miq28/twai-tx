@@ -43,7 +43,13 @@ void generatorLoop()
         msg.extd = canFrameCfg.extended ? 1 : 0;
         msg.rtr = 0;
         msg.data_length_code = 8;
-        msg.identifier = 0x123;
+
+        // ===== SAME ID LOGIC AS NORMAL =====
+        uint32_t id = appState.locked_id >= 0 ? appState.locked_id : currentId;
+        if (canFrameCfg.extended)
+            id |= 0x100;
+
+        msg.identifier = id;
 
         msg.data[0] = (counter >> 0) & 0xFF;
         msg.data[1] = (counter >> 8) & 0xFF;
@@ -54,7 +60,6 @@ void generatorLoop()
         msg.data[6] = 0x66;
         msg.data[7] = 0x77;
 
-        // 🔥 ONLY send if queue has space
         if (CANDriver::getTxQueueFree() > 0)
         {
             if (CANDriver::sendAsync(msg))
@@ -63,6 +68,10 @@ void generatorLoop()
                 counter++;
                 frameCount++;
                 lastFrameUs = now;
+
+                // ===== ADD THIS =====
+                if (appState.locked_id < 0)
+                    currentId = (currentId + 1) % 10;
             }
         }
 
