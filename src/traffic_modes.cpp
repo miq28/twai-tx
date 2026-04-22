@@ -85,6 +85,9 @@ namespace
 
 void generatorLoop()
 {
+    if (!appState.canTxEnabled)
+        return;
+
     uint64_t now = micros();
 
     // ===== MODE CHANGE HANDLING (keep your existing logic)
@@ -145,7 +148,7 @@ void generatorLoop()
 
 void ecuLoop()
 {
-    if (!appState.running)
+    if (!appState.canTxEnabled)
         return;
 
     uint64_t now = esp_timer_get_time();

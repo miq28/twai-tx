@@ -223,7 +223,7 @@ static String getStatusJson()
     String s = "{";
     s += "\"mode\":" + String(appState.mode) + ",";
     s += "\"baud\":" + String(CANDriver::getCurrentBaud()) + ",";
-    s += "\"running\":" + String(appState.running ? "true" : "false") + ",";
+    s += "\"running\":" + String(appState.canTxEnabled ? "true" : "false") + ",";
     s += "\"listen\":" + String(CANDriver::isListenOnly() ? "true" : "false");
     s += "}";
     return s;

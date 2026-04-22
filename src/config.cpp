@@ -108,13 +108,11 @@ void loadSettings()
     // prefs.clear();
 
     if (!prefs.isKey("CANBaud") || prefs.getUInt("CANBaud") == 0)
-    {
         prefs.putUInt("CANBaud", 500000);
-    }
     if (!prefs.isKey("listenOnly"))
-    {
         prefs.putBool("listenOnly", false);
-    }
+    if (!prefs.isKey("listenOnly"))
+        prefs.putBool("listenOnly", false);
 
     settings.CANBaud = prefs.getUInt("CANBaud");
     DEBUG("CANBaud: %u\n", settings.CANBaud);
@@ -158,12 +156,23 @@ void changeWifiMode(uint8_t mode)
     ESP.restart();
 }
 
-void changePrefsString(const char * key, const char * str)
+void changePrefsString(const char *key, const char *str)
 {
     // Persist
     Preferences prefs;
     prefs.begin(PREF_NAME, false);
     prefs.putString(key, str);
-    DEBUG("%s settings updated to: %s\n", key, prefs.getString(key));
+    DEBUG("%s preferences updated to: %s\n", key, prefs.getString(key));
     prefs.end();
 }
+
+void changePrefsBool(const char *key, bool value)
+{
+    // Persist
+    Preferences prefs;
+    prefs.begin(PREF_NAME, false);
+    prefs.putBool(key, value);
+    DEBUG("%s preferences updated to: %d\n", key, prefs.getBool(key));
+    prefs.end();
+}       
+

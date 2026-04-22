@@ -69,6 +69,7 @@ struct Settings
 #endif
     uint32_t CANBaud;
     uint32_t fdSpeed;
+
     bool enabled;
     bool listenOnly;
     bool fdMode;
@@ -101,3 +102,4 @@ void loadSettings();
 void applyCANConfig(uint32_t baud, bool listenOnly);
 void changeWifiMode(uint8_t mode);
 void changePrefsString(const char * key, const char * str);
+void changePrefsBool(const char * key, bool value);

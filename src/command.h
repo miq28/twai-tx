@@ -3,7 +3,8 @@
 
 enum CommandType
 {
-    CMD_NONE,
+    CMD_SET_CAN_RX,
+    CMD_SET_CAN_TX,
     CMD_START,
     CMD_STOP,
     CMD_SET_MODE,
@@ -24,7 +25,8 @@ enum CommandType
     CMD_RESTART,
     CMD_STATUS,
     CMD_RESET,
-    CMD_HELP
+    CMD_HELP,
+    CMD_NONE
 };
 
 struct Command

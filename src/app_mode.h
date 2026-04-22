@@ -33,7 +33,9 @@ enum Mode
 
 struct AppState
 {
-    bool running;
+    bool canTxEnabled;
+    bool canRxEnabled;
+
     Mode mode;
     int target_fps;
     int delay_us;

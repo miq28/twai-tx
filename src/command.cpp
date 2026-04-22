@@ -43,9 +43,17 @@ namespace
 
     bool parseCommand(char *buf, Command &cmd)
     {
-        if (strcmp(buf, "start") == 0 || strcmp(buf, "s") == 0)
+        if (strncmp(buf, "canrx ", 6) == 0)
         {
-            cmd.type = CMD_START;
+            cmd.type = CMD_SET_CAN_RX;
+            cmd.value_bool = atoi(buf + 6);
+            return true;
+        }
+
+        if (strncmp(buf, "cantx ", 6) == 0)
+        {
+            cmd.type = CMD_SET_CAN_TX;
+            cmd.value_bool = atoi(buf + 6);
             return true;
         }
 
@@ -250,11 +258,20 @@ namespace
     {
         switch (cmd.type)
         {
+        case CMD_SET_CAN_RX:
+            appState.canRxEnabled = cmd.value_bool;
+            changePrefsBool("CAN_RX_ENABLED", appState.canRxEnabled);
+            DEBUG_PRINTLN(appState.canRxEnabled ? "CAN RX ENABLED" : "CAN RX DISABLED");
+            break;
+        case CMD_SET_CAN_TX:
+            appState.canTxEnabled = cmd.value_bool;
+            changePrefsBool("CAN_TX_ENABLED", appState.canTxEnabled);
+            CANDriver::flushTxQueue();   // 🔥 add this
+            DEBUG_PRINTLN(appState.canTxEnabled ? "CAN TX ENABLED" : "CAN TX DISABLED");
+            break;
         case CMD_START:
-            appState.running = true;
             break;
         case CMD_STOP:
-            appState.running = false;
             break;
         case CMD_SET_MODE:
         {
