@@ -167,6 +167,8 @@ void loop()
 
     gvretLoop();
 
+    CANDriver::loop();
+
     switch (appState.mode)
     {
     case MODE_GENERATOR:
