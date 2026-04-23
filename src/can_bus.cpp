@@ -68,9 +68,6 @@ namespace CANDriver
 
             struct
             {
-                // uint32_t err_code;
-                // uint8_t tx_err;
-                // uint8_t rx_err;
                 uint32_t flags; // from err_flags.val
             } error;
         };
@@ -106,28 +103,27 @@ namespace CANDriver
         return true;
     }
 
-    const char *stateToStr(twai_error_state_t s)
+    const char *errorStateToStr(twai_error_state_t s)
     {
         switch (s)
         {
         case TWAI_ERROR_ACTIVE:
-            return "ACTIVE";
+            return "ERROR_ACTIVE";
         case TWAI_ERROR_WARNING:
-            return "WARNING";
+            return "ERROR_WARNING";
         case TWAI_ERROR_PASSIVE:
-            return "PASSIVE";
+            return "ERROR_PASSIVE";
         case TWAI_ERROR_BUS_OFF:
-            return "BUS_OFF";
+            return "ERROR_BUS_OFF";
         default:
-            return "UNKNOWN";
+            return "??? UNKNOWN ERROR ???";
         }
     }
-
-
 
     void requestRecover()
     {
         recoverRequested = true;
+        DEBUG_PRINTLN("[CAN] RECOVER REQUESTED");
     }
 
     void loop()
@@ -141,13 +137,15 @@ namespace CANDriver
             {
             case CANDriver::EVT_RX:
                 // move ISR work here
-                CANRxBuffer::pushFromISR(ev.rx.msg); // now safe
-                ledRxEvent();                        // now safe
+                CANRxBuffer::push(ev.rx.msg); // now safe
+                ledRxEvent();                 // now safe
                 break;
 
             case CANDriver::EVT_STATE:
             {
+
                 auto s = ev.state.new_sta;
+                DEBUG("[CAN] EVT_STATE errorState= ====================== %s\n", errorStateToStr(s));
 
                 CANDriver::g_errorState = s;
                 CANDriver::g_errorStateChanged = true;
@@ -158,6 +156,8 @@ namespace CANDriver
                     CANDriver::g_driverStateChanged = true;
 
                     CANDriver::requestRecover(); // safe trigger
+
+                    flushTxQueue();
 
                     // SAFE here (not ISR anymore)
                     // IMPORTANT: node is private → see note below
@@ -188,33 +188,50 @@ namespace CANDriver
                 if (f & (1 << 4))
                     DEBUG("[CAN] ACK ERROR\n");
 
-                // ===== get counters =====
-                twai_node_status_t s;
-                if (CANDriver::getStatus(s))
-                {
-                    static uint32_t lastPrint = 0;
-
-                    if (millis() - lastPrint > 200)
-                    {
-                        lastPrint = millis();
-
-                        DEBUG("[CAN] state=%d tx_err=%u rx_err=%u\n",
-                              stateToStr(s.state),
-                              s.tx_error_count,
-                              s.rx_error_count);
-                    }
-                }
-
                 break;
             }
             }
+        }
+
+
+
+        // sometimes the driver doesn't trigger state change when bus-off happens
+        // so we do a periodic check just in case to ensure recover is triggered
+        static uint32_t lastRecover = 0;
+
+        if (millis() - lastRecover > 3000 && g_errorState == TWAI_ERROR_BUS_OFF)
+        {
+            lastRecover = millis();
+            requestRecover();
         }
 
         // recover if requested (event-driven, safe context)
         if (recoverRequested)
         {
             recoverRequested = false;
-            twai_node_recover(node);
+            DEBUG_PRINTLN("[CAN] RECOVERING...");
+            uint16_t result = twai_node_recover(node);
+            DEBUG("[CAN] result=%d - %s\n",
+                result == ESP_OK ? ESP_OK : result,
+                result == ESP_OK ? "RECOVERY SUCCESSFUL" : "RECOVERY FAILED");
+        }
+
+        static uint32_t lastPrint = 0;
+
+        if (millis() - lastPrint > 100)
+        {
+            lastPrint = millis();
+
+            // ===== get counters =====
+            twai_node_status_t s;
+            if (CANDriver::getStatus(s))
+            {
+                DEBUG("[CAN] state=%s tx_err=%u rx_err=%u tx_queue=%u\n",
+                      errorStateToStr(s.state),
+                      s.tx_error_count,
+                      s.rx_error_count,
+                      s.tx_queue_remaining);
+            }
         }
     }
 
@@ -351,6 +368,9 @@ namespace CANDriver
 
     static void canTxTask(void *)
     {
+        if (CANDriver::g_errorState == TWAI_ERROR_BUS_OFF)
+            return;
+
         can_tx_item_t item;
 
         while (true)
@@ -437,6 +457,9 @@ namespace CANDriver
 
     bool sendAsync(const twai_message_t &msg)
     {
+        if (CANDriver::g_errorState == TWAI_ERROR_BUS_OFF)
+            return false;
+
         if (!canTxQueue)
             return false;
 
@@ -575,7 +598,7 @@ namespace CANRxBuffer
     volatile uint32_t dropCount = 0;
     volatile uint32_t totalFrames = 0;
 
-    bool pushFromISR(const twai_message_t &msg)
+    bool push(const twai_message_t &msg)
     {
         uint16_t next = (rxHead + 1) % RX_BUF_SIZE;
 
