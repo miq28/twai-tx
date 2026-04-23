@@ -1,4 +1,5 @@
 #include "led_activity.h"
+#include "can_bus.h"
 #include <Arduino.h>
 
 #if defined(WEACT_STUDIO_CAN485_V1)
@@ -11,27 +12,23 @@
 static Adafruit_NeoPixel pixel(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 // ===== CONFIG =====
-static const uint32_t PULSE_MS    = 20;
-static const uint32_t PEAK_MS     = 40;
+static const uint32_t PULSE_MS = 20;
+static const uint32_t PEAK_MS  = 40;
 
-static const float DECAY          = 0.90f;
-static const float SCALE          = 0.02f;
+static const float DECAY = 0.90f;
+static const float SCALE = 0.02f;
 
 static const uint16_t PEAK_THRESHOLD = 50;
 
-// WiFi
 static const uint32_t WIFI_PERIOD_MS = 1000;
 static const uint32_t WIFI_FLASH_MS  = 25;
 
-// LED refresh
 static const uint32_t LED_TASK_MS = 10;
 
 // ===== STATE =====
 static volatile uint16_t rxEvents = 0;
 static volatile uint16_t txEvents = 0;
 static volatile bool wifiConnected = true;
-
-static volatile CANHealthState canHealth = CAN_HEALTH_OK;
 
 static float rxLevel = 0;
 static float txLevel = 0;
@@ -43,14 +40,13 @@ static uint32_t peakUntil = 0;
 static uint32_t wifiNextFlash = 0;
 static uint32_t wifiFlashUntil = 0;
 
+// EVENT CACHE
+static bool driverAlive = false;
+static twai_error_state_t canState = TWAI_ERROR_ACTIVE;
+
 // ===== API =====
 void ledRxEvent() { rxEvents++; }
 void ledTxEvent() { txEvents++; }
-
-void ledSetCANHealth(CANHealthState state)
-{
-    canHealth = state;
-}
 
 void ledWifiConnected(bool connected)
 {
@@ -67,13 +63,14 @@ void ledTask(void *)
     bool errorPulseState = false;
     uint32_t errorPulseTimer = 0;
 
+    bool driverBlink = false;
+    uint32_t driverBlinkTimer = 0;
+
     while (1)
     {
         uint32_t now = millis();
 
-        // =========================================================
-        // 🟡 WIFI FLASH (TOP PRIORITY)
-        // =========================================================
+        // WIFI
         if (!wifiConnected)
         {
             if (now >= wifiNextFlash)
@@ -91,21 +88,49 @@ void ledTask(void *)
             }
         }
 
-        // =========================================================
-        // CAN HEALTH PRIORITY
-        // =========================================================
-        if (canHealth == CAN_HEALTH_BUS_OFF)
+        // EVENT UPDATE
+        if (CANDriver::g_driverStateChanged)
         {
-            // 🔴 solid red
-            pixel.setPixelColor(0, pixel.Color(150, 0, 0));
+            driverAlive = CANDriver::g_driverAlive;
+            CANDriver::g_driverStateChanged = false;
+        }
+
+        if (CANDriver::g_errorStateChanged)
+        {
+            canState = CANDriver::g_errorState;
+            CANDriver::g_errorStateChanged = false;
+        }
+
+        // DRIVER ERROR → WHITE BLINK
+        if (!driverAlive)
+        {
+            if (now - driverBlinkTimer > 200)
+            {
+                driverBlinkTimer = now;
+                driverBlink = !driverBlink;
+            }
+
+            if (driverBlink)
+                pixel.setPixelColor(0, pixel.Color(120, 120, 120));
+            else
+                pixel.setPixelColor(0, 0);
+
             pixel.show();
             vTaskDelay(pdMS_TO_TICKS(LED_TASK_MS));
             continue;
         }
 
-        if (canHealth == CAN_HEALTH_ERROR)
+        // CAN STATE
+        switch (canState)
         {
-            // 🔴 pulsing red
+        case TWAI_ERROR_BUS_OFF:
+            pixel.setPixelColor(0, pixel.Color(150, 0, 0));
+            pixel.show();
+            vTaskDelay(pdMS_TO_TICKS(LED_TASK_MS));
+            continue;
+
+        case TWAI_ERROR_PASSIVE:
+        {
             if (now - errorPulseTimer > 200)
             {
                 errorPulseTimer = now;
@@ -113,25 +138,23 @@ void ledTask(void *)
             }
 
             uint8_t r = errorPulseState ? 120 : 10;
-
             pixel.setPixelColor(0, pixel.Color(r, 0, 0));
             pixel.show();
             vTaskDelay(pdMS_TO_TICKS(LED_TASK_MS));
             continue;
         }
 
-        if (canHealth == CAN_HEALTH_DEGRADED)
-        {
-            // 🟠 dim orange
-            pixel.setPixelColor(0, pixel.Color(80, 30, 0));
+        case TWAI_ERROR_WARNING:
+            pixel.setPixelColor(0, pixel.Color(120, 120, 0));
             pixel.show();
             vTaskDelay(pdMS_TO_TICKS(LED_TASK_MS));
             continue;
+
+        case TWAI_ERROR_ACTIVE:
+            break;
         }
 
-        // =========================================================
-        // NORMAL CAN VISUALIZATION
-        // =========================================================
+        // NORMAL ACTIVITY
         uint16_t rx = rxEvents;
         uint16_t tx = txEvents;
         rxEvents = 0;
@@ -144,9 +167,7 @@ void ledTask(void *)
         if (tx > 0) txUntil = now + PULSE_MS;
 
         if ((rx + tx) > PEAK_THRESHOLD)
-        {
             peakUntil = now + PEAK_MS;
-        }
 
         bool rxActive = now < rxUntil;
         bool txActive = now < txUntil;
@@ -193,7 +214,7 @@ void ledTask(void *)
     }
 }
 
-// ===== INIT =====
+// INIT
 void ledActivityInit()
 {
     xTaskCreatePinnedToCore(
@@ -212,7 +233,6 @@ void ledActivityInit()
 void ledActivityInit() {}
 void ledRxEvent() {}
 void ledTxEvent() {}
-void ledSetCANHealth(CANHealthState) {}
 void ledWifiConnected(bool) {}
 
 #endif

@@ -151,7 +151,7 @@ void setup()
     transportInit();
     initAppState();
     CANDriver::init(settings.CANBaud, settings.listenOnly);
-    CANRxBuffer::startTask();
+    // CANRxBuffer::startTask();
     analyzerInit();
     webInit();
     ledActivityInit();

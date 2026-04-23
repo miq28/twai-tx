@@ -25,6 +25,49 @@ static volatile uint32_t txPoolIndex = 0;
 
 namespace CANDriver
 {
+    /*
+    // Globals to store state
+    volatile twai_error_state_t g_canState = TWAI_ERROR_BUS_OFF;
+    volatile unsigned long g_lastErrorTime = 0;
+
+    // Callback: Handle State Changes
+    static bool IRAM_ATTR on_state_change(twai_node_handle_t hdl, const twai_state_change_event_data_t *edata, void *arg)
+    {
+        g_canState = edata->new_sta;
+
+        // Print state change info
+        DEBUG_PRINT("TWAI State Changed: ");
+        if (edata->new_sta == TWAI_ERROR_ACTIVE)
+            DEBUG_PRINTLN("ERROR_ACTIVE");
+        else if (edata->new_sta == TWAI_ERROR_WARNING)
+            DEBUG_PRINTLN("ERROR_WARNING");
+        else if (edata->new_sta == TWAI_ERROR_PASSIVE)
+            DEBUG_PRINTLN("ERROR_PASSIVE");
+        else if (edata->new_sta == TWAI_ERROR_BUS_OFF)
+            DEBUG_PRINTLN("ERROR_BUS_OFF");
+
+        return false; // Don't notify tasks
+    }
+
+    // Callback: Handle Errors
+    static bool IRAM_ATTR on_error(twai_node_handle_t hdl, const twai_error_event_data_t *edata, void *arg)
+    {
+        g_lastErrorTime = millis();
+
+        // Print error info
+        DEBUG("TWAI Error: Flags 0x%X\n", edata->err_flags.val);
+        // Serial.printf("Error Count - TX:%d, RX:%d\n", edata->tx_err_cnt, edata->rx_err_cnt);
+
+        return false; // Don't notify tasks
+    }
+        */
+
+    // Globals to store state
+    volatile twai_error_state_t g_errorState = TWAI_ERROR_ACTIVE;
+    volatile bool g_errorStateChanged = false;
+    volatile bool g_driverAlive = false;
+    volatile bool g_driverStateChanged = false;
+
     static uint32_t currentBaud = 500000;
     static bool currentListenOnly = false;
     static bool driverRunning = false;
@@ -96,9 +139,14 @@ namespace CANDriver
     }
 
     static bool on_error(twai_node_handle_t,
-                         const twai_error_event_data_t *,
+                         const twai_error_event_data_t *edata,
                          void *)
     {
+        // Optional: debug / counters only
+
+        // Example:
+        // if (edata->err_flags.ack_err) { ... }
+
         return false;
     }
 
@@ -106,10 +154,34 @@ namespace CANDriver
                                 const twai_state_change_event_data_t *edata,
                                 void *)
     {
+        if (edata->old_sta == edata->new_sta)
+            return false;
+
+        CANDriver::g_errorState = edata->new_sta;
+        CANDriver::g_errorStateChanged = true;
+
+        // =========================================================
+        // BUS OFF → driver unusable
+        // =========================================================
         if (edata->new_sta == TWAI_ERROR_BUS_OFF)
         {
+            CANDriver::g_driverAlive = false;
+            CANDriver::g_driverStateChanged = true;
+
+            // trigger recovery
             twai_node_recover(node);
         }
+
+        // =========================================================
+        // RECOVERED → driver usable again
+        // =========================================================
+        if (edata->old_sta == TWAI_ERROR_BUS_OFF &&
+            edata->new_sta == TWAI_ERROR_ACTIVE)
+        {
+            CANDriver::g_driverAlive = true;
+            CANDriver::g_driverStateChanged = true;
+        }
+
         return false;
     }
 
@@ -148,6 +220,8 @@ namespace CANDriver
 
         if (twai_node_enable(node) != ESP_OK)
         {
+            g_driverAlive = false;
+            g_driverStateChanged = true;
             CAN_LOG("[CAN] start failed\n");
             return false;
         }
@@ -155,6 +229,9 @@ namespace CANDriver
         currentBaud = baud;
         currentListenOnly = listenOnly;
         driverRunning = true;
+
+        g_driverAlive = true;
+        g_driverStateChanged = true;
 
         CAN_LOG("[CAN] started\n");
         return true;
@@ -301,7 +378,7 @@ namespace CANDriver
 
     bool reinit(uint32_t baud, bool listenOnly)
     {
-        CANRxBuffer::stopTask();
+        // CANRxBuffer::stopTask();
 
         if (node)
         {
@@ -312,27 +389,23 @@ namespace CANDriver
 
         bool ok = startDriver(baud, listenOnly);
 
-        CANRxBuffer::clear();
-        CANRxBuffer::startTask();
+        // CANRxBuffer::clear();
+        // CANRxBuffer::startTask();
 
         return ok;
     }
 
     bool send(const twai_message_t &msg)
     {
-        if (!CANDriver::isRunning())
-            return false;
-
         if (!node)
             return false;
 
-        // 🔥 DEBUG + CLAMP HERE
         uint8_t dlc = msg.data_length_code;
 
         if (dlc > 8)
         {
             static uint32_t lastWarn = 0;
-            if (millis() - lastWarn > 1000) // rate limit
+            if (millis() - lastWarn > 1000)
             {
                 lastWarn = millis();
                 DEBUG("[WARN] DLC corrupted: %u\n", dlc);
@@ -340,7 +413,7 @@ namespace CANDriver
             dlc = 8;
         }
 
-        uint8_t buf[8]; // 🔥 FIX
+        uint8_t buf[8];
 
         twai_frame_t frame = {};
         frame.header.id = msg.identifier;
@@ -354,35 +427,49 @@ namespace CANDriver
             memcpy(buf, msg.data, dlc);
         }
 
-        return twai_node_transmit(node, &frame, 0) == ESP_OK;
+        esp_err_t err = twai_node_transmit(node, &frame, 0);
+
+        if (err != ESP_OK)
+        {
+            // 🔥 OPTIONAL: mark driver issue (event-driven LED will react)
+            CANDriver::g_driverAlive = false;
+            CANDriver::g_driverStateChanged = true;
+            return false;
+        }
+
+        return true;
     }
 
-    bool isRunning() { return driverRunning; }
     uint32_t getCurrentBaud() { return currentBaud; }
     bool isListenOnly() { return currentListenOnly; }
 
-    CANHealthState getCANHealth()
-    {
-        if (!node)
-            return CAN_HEALTH_ERROR;
+    // esp_err_t getStatus()
+    // {
+    //     if (!node)
+    //         return ESP_ERR_INVALID_STATE;
 
-        twai_node_status_t s;
-        twai_node_get_info(node, &s, nullptr);
+    //     twai_node_status_t s;
+    //     return twai_node_get_info(node, &s, nullptr);
+    // }
 
-        switch (s.state)
-        {
-        case TWAI_ERROR_ACTIVE:
-            return CAN_HEALTH_OK;
-        case TWAI_ERROR_WARNING:
-            return CAN_HEALTH_DEGRADED;
-        case TWAI_ERROR_PASSIVE:
-            return CAN_HEALTH_ERROR;
-        case TWAI_ERROR_BUS_OFF:
-            return CAN_HEALTH_BUS_OFF;
-        default:
-            return CAN_HEALTH_ERROR;
-        }
-    }
+    // esp_err_t getStatus()
+    // {
+    //     twai_node_status_t s;
+    //     if (twai_node_get_info(node, &s, nullptr) != ESP_OK)
+    //         return s.state;
+
+    //     return;
+    // }
+
+    // twai_error_state_t getErrorState()
+    // {
+    //     if (!node)
+    //         return TWAI_ERROR_BUS_OFF;
+
+    //     twai_node_status_t s;
+    //     twai_node_get_info(node, &s, nullptr);
+    //     return s.state;
+    // }
 }
 
 namespace CANRxBuffer
@@ -438,51 +525,48 @@ namespace CANRxBuffer
         return (rxHead - rxTail + RX_BUF_SIZE) % RX_BUF_SIZE;
     }
 
-    void task(void *)
-    {
-        rxRunning = true;
+    // void task(void *)
+    // {
+    //     rxRunning = true;
 
-        while (rxRunning)
-        {
-            CANHealthState h = CANDriver::getCANHealth();
-            ledSetCANHealth(h);
+    //     while (rxRunning)
+    //     {
+    //         vTaskDelay(pdMS_TO_TICKS(50));
+    //     }
 
-            vTaskDelay(pdMS_TO_TICKS(50));
-        }
+    //     xEventGroupSetBits(rxEventGroup, RX_TASK_STOPPED_BIT);
+    //     rxTaskHandle = nullptr;
+    //     vTaskDelete(NULL);
+    // }
 
-        xEventGroupSetBits(rxEventGroup, RX_TASK_STOPPED_BIT);
-        rxTaskHandle = nullptr;
-        vTaskDelete(NULL);
-    }
+    // void startTask()
+    // {
+    //     if (!rxEventGroup)
+    //         rxEventGroup = xEventGroupCreateStatic(&rxEventGroupBuf);
 
-    void startTask()
-    {
-        if (!rxEventGroup)
-            rxEventGroup = xEventGroupCreateStatic(&rxEventGroupBuf);
+    //     if (rxTaskHandle)
+    //         stopTask();
 
-        if (rxTaskHandle)
-            stopTask();
+    //     xEventGroupClearBits(rxEventGroup, RX_TASK_STOPPED_BIT);
+    //     rxRunning = true;
 
-        xEventGroupClearBits(rxEventGroup, RX_TASK_STOPPED_BIT);
-        rxRunning = true;
+    //     xTaskCreatePinnedToCore(task, "can_rx", 4096, NULL, 16, &rxTaskHandle, 1);
+    // }
 
-        xTaskCreatePinnedToCore(task, "can_rx", 4096, NULL, 16, &rxTaskHandle, 1);
-    }
+    // void stopTask()
+    // {
+    //     if (rxTaskHandle)
+    //     {
+    //         rxRunning = false;
 
-    void stopTask()
-    {
-        if (rxTaskHandle)
-        {
-            rxRunning = false;
-
-            xEventGroupWaitBits(
-                rxEventGroup,
-                RX_TASK_STOPPED_BIT,
-                pdTRUE,
-                pdTRUE,
-                pdMS_TO_TICKS(200));
-        }
-    }
+    //         xEventGroupWaitBits(
+    //             rxEventGroup,
+    //             RX_TASK_STOPPED_BIT,
+    //             pdTRUE,
+    //             pdTRUE,
+    //             pdMS_TO_TICKS(200));
+    //     }
+    // }
 
     void clear()
     {

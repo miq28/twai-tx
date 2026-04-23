@@ -87,7 +87,7 @@ static void sendCANConfig()
 
     resp[2] = 0;
 
-    if (CANDriver::isRunning())
+   if (CANDriver::g_driverAlive)
         resp[2] |= (1 << 0);
 
     if (CANDriver::isListenOnly())
@@ -347,7 +347,7 @@ void gvretLoop()
     static uint16_t txLen = 0;
     static uint32_t lastFlush = 0;
 
-    if (CANDriver::isRunning())
+    if (CANDriver::g_driverAlive)
     {
         CANRxItem item;
         int limit = 50;

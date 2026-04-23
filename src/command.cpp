@@ -314,7 +314,7 @@ namespace
             DEBUG("Mode:%d Baud:%lu, Running:%s listen-only:%s FPS:%d\n",
                   appState.mode,
                   CANDriver::getCurrentBaud(),
-                  CANDriver::isRunning() ? "true" : "false",
+                  CANDriver::g_driverAlive ? "true" : "false",
                   CANDriver::isListenOnly() ? "true" : "false",
                   appState.target_fps);
             break;
