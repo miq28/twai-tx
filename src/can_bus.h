@@ -37,8 +37,6 @@ namespace CANRxBuffer
 {
     bool pop(CANRxItem &out);
     int count();
-    void startTask();
-    void stopTask();
 
     bool push(const twai_message_t &msg, uint32_t ts);
     bool pushFromISR(const twai_message_t &msg);
@@ -50,4 +48,10 @@ namespace CANRxBuffer
     uint32_t getTotalFrames();
     uint16_t getMaxUsage();
     void resetStats();
+}
+
+namespace CANMonitor
+{
+    void startTask();
+    void stopTask();
 }

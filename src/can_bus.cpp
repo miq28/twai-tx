@@ -34,6 +34,7 @@ namespace CANDriver
     // =========================================================
     // RX ISR CALLBACK
     // =========================================================
+
     // static bool on_rx_done(twai_node_handle_t n,
     //                        const twai_rx_done_event_data_t *edata,
     //                        void *)
@@ -244,6 +245,10 @@ namespace CANDriver
             14,
             NULL,
             1);
+
+        CANRxBuffer::clear();
+        // CANRxBuffer::startTask(); // if you still use it
+        CANMonitor::startTask(); // ✅ new
     }
 
     bool sendAsync(const twai_message_t &msg)
@@ -301,7 +306,8 @@ namespace CANDriver
 
     bool reinit(uint32_t baud, bool listenOnly)
     {
-        CANRxBuffer::stopTask();
+        // CANRxBuffer::stopTask();
+        CANMonitor::stopTask();
 
         if (node)
         {
@@ -313,7 +319,8 @@ namespace CANDriver
         bool ok = startDriver(baud, listenOnly);
 
         CANRxBuffer::clear();
-        CANRxBuffer::startTask();
+        // CANRxBuffer::startTask();
+        CANMonitor::startTask();
 
         return ok;
     }
@@ -387,14 +394,6 @@ namespace CANDriver
 
 namespace CANRxBuffer
 {
-    static TaskHandle_t rxTaskHandle = nullptr;
-    static volatile bool rxRunning = false;
-
-    static StaticEventGroup_t rxEventGroupBuf;
-    static EventGroupHandle_t rxEventGroup = nullptr;
-
-#define RX_TASK_STOPPED_BIT BIT0
-
     constexpr uint16_t RX_BUF_SIZE = 1024;
 
     CANRxItem rxBuffer[RX_BUF_SIZE];
@@ -438,52 +437,6 @@ namespace CANRxBuffer
         return (rxHead - rxTail + RX_BUF_SIZE) % RX_BUF_SIZE;
     }
 
-    void task(void *)
-    {
-        rxRunning = true;
-
-        while (rxRunning)
-        {
-            CANHealthState h = CANDriver::getCANHealth();
-            ledSetCANHealth(h);
-
-            vTaskDelay(pdMS_TO_TICKS(50));
-        }
-
-        xEventGroupSetBits(rxEventGroup, RX_TASK_STOPPED_BIT);
-        rxTaskHandle = nullptr;
-        vTaskDelete(NULL);
-    }
-
-    void startTask()
-    {
-        if (!rxEventGroup)
-            rxEventGroup = xEventGroupCreateStatic(&rxEventGroupBuf);
-
-        if (rxTaskHandle)
-            stopTask();
-
-        xEventGroupClearBits(rxEventGroup, RX_TASK_STOPPED_BIT);
-        rxRunning = true;
-
-        xTaskCreatePinnedToCore(task, "can_rx", 4096, NULL, 16, &rxTaskHandle, 1);
-    }
-
-    void stopTask()
-    {
-        if (rxTaskHandle)
-        {
-            rxRunning = false;
-
-            xEventGroupWaitBits(
-                rxEventGroup,
-                RX_TASK_STOPPED_BIT,
-                pdTRUE,
-                pdTRUE,
-                pdMS_TO_TICKS(200));
-        }
-    }
-
     void clear()
     {
         rxTail = rxHead;
@@ -496,5 +449,95 @@ namespace CANRxBuffer
     {
         dropCount = 0;
         totalFrames = 0;
+    }
+}
+
+namespace CANMonitor
+{
+    static TaskHandle_t taskHandle = nullptr;
+    static volatile bool running = false;
+
+    static StaticEventGroup_t eventGroupBuf;
+    static EventGroupHandle_t eventGroup = nullptr;
+
+#define MONITOR_TASK_STOPPED_BIT BIT0
+
+    void task(void *)
+    {
+        running = true;
+
+        static uint32_t lastPrint = 0;
+        static CANHealthState lastState = CAN_HEALTH_ERROR;
+
+        while (running)
+        {
+            CANHealthState h = CANDriver::getCANHealth();
+            ledSetCANHealth(h);
+
+            // switch (s.state)
+            // {
+            // case TWAI_ERROR_ACTIVE:
+            //     return CAN_HEALTH_OK;
+            // case TWAI_ERROR_WARNING:
+            //     return CAN_HEALTH_DEGRADED;
+            // case TWAI_ERROR_PASSIVE:
+            //     return CAN_HEALTH_ERROR;
+            // case TWAI_ERROR_BUS_OFF:
+            //     return CAN_HEALTH_BUS_OFF;
+            // default:
+            //     return CAN_HEALTH_ERROR;
+            // }
+
+            // ✅ print only when state changes OR every 1s
+            if (h != lastState || millis() - lastPrint > 1000)
+            {
+                lastPrint = millis();
+                lastState = h;
+
+                DEBUG("[CAN] state = %d\n", h);
+            }
+
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+
+        xEventGroupSetBits(eventGroup, MONITOR_TASK_STOPPED_BIT);
+        taskHandle = nullptr;
+        vTaskDelete(NULL);
+    }
+
+    void startTask()
+    {
+        if (!eventGroup)
+            eventGroup = xEventGroupCreateStatic(&eventGroupBuf);
+
+        if (taskHandle)
+            stopTask();
+
+        xEventGroupClearBits(eventGroup, MONITOR_TASK_STOPPED_BIT);
+        running = true;
+
+        xTaskCreatePinnedToCore(
+            task,
+            "can_monitor",
+            2048,
+            NULL,
+            3, // priority
+            &taskHandle,
+            1);
+    }
+
+    void stopTask()
+    {
+        if (taskHandle)
+        {
+            running = false;
+
+            xEventGroupWaitBits(
+                eventGroup,
+                MONITOR_TASK_STOPPED_BIT,
+                pdTRUE,
+                pdTRUE,
+                pdMS_TO_TICKS(200));
+        }
     }
 }
