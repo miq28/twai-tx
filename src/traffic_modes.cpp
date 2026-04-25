@@ -88,6 +88,11 @@ void generatorLoop()
     if (!appState.canTxEnabled)
         return;
 
+    if (CANDriver::getErrorStateRaw() == TWAI_ERROR_BUS_OFF)
+    {
+        return; // stop generating
+    }
+
     uint64_t now = micros();
 
     // ===== MODE CHANGE HANDLING (keep your existing logic)

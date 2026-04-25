@@ -38,6 +38,7 @@ namespace CANDriver
 
     void processEvents();
     void processError();
+    bool recover();
 }
 
 namespace CANRxBuffer

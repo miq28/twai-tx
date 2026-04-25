@@ -286,11 +286,6 @@ namespace CANDriver
 
         pushEventFromISR(e);
 
-        if (edata->new_sta == TWAI_ERROR_BUS_OFF)
-        {
-            twai_node_recover(node);
-        }
-
         return false;
     }
 
@@ -610,6 +605,14 @@ namespace CANDriver
 
         return twai_node_get_info(node, &out, nullptr) == ESP_OK;
     }
+
+    bool recover()
+    {
+        if (!node)
+            return false;
+
+        return twai_node_recover(node) == ESP_OK;
+    }
 }
 
 namespace CANRxBuffer
@@ -698,6 +701,24 @@ namespace CANMonitor
             CANDriver::processEvents();
             // 🔥 PROCESS ERRORS HERE
             CANDriver::processError();
+
+            // ===== BUS OFF RECOVERY =====
+            static uint32_t lastRecover = 0;
+
+            twai_error_state_t state = CANDriver::getErrorStateRaw();
+
+            if (state == TWAI_ERROR_BUS_OFF)
+            {
+                if (millis() - lastRecover > 1000)
+                {
+                    lastRecover = millis();
+
+                    if (CANDriver::recover())
+                    {
+                        DEBUG("[CAN] Recovering from BUS_OFF\n");
+                    }
+                }
+            }
 
             // ✅ print only when state changes OR every 1s
             if (h != lastState || millis() - lastPrint > 1000)
