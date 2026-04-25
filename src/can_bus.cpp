@@ -31,31 +31,72 @@ namespace CANDriver
 
     static twai_node_handle_t node = nullptr;
 
+    // ================= EVENT BUFFER =================
+
+    typedef enum
+    {
+        CAN_EVT_ERROR,
+        CAN_EVT_STATE_CHANGE
+    } can_evt_type_t;
+
+    typedef struct
+    {
+        can_evt_type_t type;
+
+        union
+        {
+            uint32_t errFlags;
+
+            struct
+            {
+                uint8_t oldState;
+                uint8_t newState;
+            } state;
+        };
+    } can_evt_t;
+
+#define CAN_EVT_BUF_SIZE 32
+
+    static can_evt_t evtBuf[CAN_EVT_BUF_SIZE];
+    static volatile uint8_t evtHead = 0;
+    static volatile uint8_t evtTail = 0;
+
+    // ===== ERROR COUNTERS =====
+    static volatile uint32_t err_ack = 0;
+    static volatile uint32_t err_bit = 0;
+    static volatile uint32_t err_form = 0;
+    static volatile uint32_t err_stuff = 0;
+    static volatile uint32_t err_arb = 0;
+    static volatile uint32_t err_other = 0;
+
+    // ISR-safe push
+    static inline void pushEventFromISR(const can_evt_t &e)
+    {
+        uint8_t next = (evtHead + 1) % CAN_EVT_BUF_SIZE;
+
+        if (next == evtTail)
+        {
+            evtTail = (evtTail + 1) % CAN_EVT_BUF_SIZE; // overwrite oldest
+        }
+
+        evtBuf[evtHead] = e;
+        evtHead = next;
+    }
+
+    // task-side pop
+    static bool popEvent(can_evt_t &out)
+    {
+        if (evtTail == evtHead)
+            return false;
+
+        out = evtBuf[evtTail];
+        evtTail = (evtTail + 1) % CAN_EVT_BUF_SIZE;
+        return true;
+    }
+
     // =========================================================
     // RX ISR CALLBACK
     // =========================================================
-
-    // static bool on_rx_done(twai_node_handle_t n,
-    //                        const twai_rx_done_event_data_t *edata,
-    //                        void *)
-    // {
-    //     twai_frame_t frame;
-
-    //     if (twai_node_receive_from_isr(n, &frame) == ESP_OK)
-    //     {
-    //         twai_message_t msg = {};
-    //         msg.identifier = frame.header.id;
-    //         msg.extd = frame.header.ide;
-    //         msg.rtr = frame.header.rtr;
-    //         msg.data_length_code = frame.buffer_len;
-
-    //         memcpy(msg.data, frame.buffer, frame.buffer_len);
-
-    //         CANRxBuffer::pushFromISR(msg);
-    //     }
-
-    //     return false;
-    // }
 
     static bool on_rx_done(twai_node_handle_t n,
                            const twai_rx_done_event_data_t *edata,
@@ -96,10 +137,141 @@ namespace CANDriver
         return false;
     }
 
+    static const char *errFlagToStr(uint32_t f)
+    {
+        if (f & (1 << 4))
+            return "ACK";
+        if (f & (1 << 1))
+            return "BIT";
+        if (f & (1 << 2))
+            return "FORM";
+        if (f & (1 << 3))
+            return "STUFF";
+        if (f & (1 << 0))
+            return "ARB_LOST";
+        return "UNKNOWN";
+    }
+
+    static const char *stateToStr(uint8_t s)
+    {
+        switch (s)
+        {
+        case TWAI_ERROR_ACTIVE:
+            return "ACTIVE";
+        case TWAI_ERROR_WARNING:
+            return "WARNING";
+        case TWAI_ERROR_PASSIVE:
+            return "PASSIVE";
+        case TWAI_ERROR_BUS_OFF:
+            return "BUS_OFF";
+        default:
+            return "?";
+        }
+    }
+
+    void processEvents()
+    {
+        can_evt_t e;
+
+        while (popEvent(e))
+        {
+            if (e.type == CAN_EVT_ERROR)
+            {
+                // ❌ no ERROR logging here anymore
+                // counting is already done in ISR (on_error)
+                // printing is in task and now rate-limited and only prints the error type and count
+                // no more state info (can be added back if needed)
+            }
+            else if (e.type == CAN_EVT_STATE_CHANGE)
+            {
+                DEBUG("[CAN][STATE] %s(%d) -> %s(%d)\n",
+                      stateToStr(e.state.oldState),
+                      e.state.oldState,
+                      stateToStr(e.state.newState),
+                      e.state.newState);
+            }
+        }
+    }
+
+    void processError()
+    {
+        static uint32_t lastErrReport = 0;
+
+        uint32_t now = millis();
+        if (now - lastErrReport < 1000)
+            return;
+
+        lastErrReport = now;
+
+        // ===== snapshot + reset =====
+        uint32_t ack = err_ack;
+        err_ack = 0;
+        uint32_t bit = err_bit;
+        err_bit = 0;
+        uint32_t form = err_form;
+        err_form = 0;
+        uint32_t stuff = err_stuff;
+        err_stuff = 0;
+        uint32_t arb = err_arb;
+        err_arb = 0;
+        uint32_t other = err_other;
+        err_other = 0;
+
+        // ===== print only if any error =====
+        if (!(ack || bit || form || stuff || arb || other))
+            return;
+
+        // ===== build single-line log =====
+        char line[128];
+        int len = 0;
+
+        len += snprintf(line + len, sizeof(line) - len, "[CAN][ERR/s]");
+
+        if (stuff)
+            len += snprintf(line + len, sizeof(line) - len, " STUFF=%lu", stuff);
+        if (bit)
+            len += snprintf(line + len, sizeof(line) - len, " BIT=%lu", bit);
+        if (form)
+            len += snprintf(line + len, sizeof(line) - len, " FORM=%lu", form);
+        if (ack)
+            len += snprintf(line + len, sizeof(line) - len, " ACK=%lu", ack);
+        if (arb)
+            len += snprintf(line + len, sizeof(line) - len, " ARB=%lu", arb);
+        if (other)
+            len += snprintf(line + len, sizeof(line) - len, " OTHER=%lu", other);
+
+        len += snprintf(line + len, sizeof(line) - len, "\n");
+
+        // ===== single DEBUG call =====
+        DEBUG("%s", line);
+    }
+
     static bool on_error(twai_node_handle_t,
-                         const twai_error_event_data_t *,
+                         const twai_error_event_data_t *edata,
                          void *)
     {
+        uint32_t f = edata->err_flags.val;
+
+        // ===== COUNT (VERY FAST, ISR SAFE) =====
+        if (f & (1 << 4))
+            err_ack = err_ack + 1;
+        else if (f & (1 << 1))
+            err_bit = err_bit + 1;
+        else if (f & (1 << 2))
+            err_form = err_form + 1;
+        else if (f & (1 << 3))
+            err_stuff = err_stuff + 1;
+        else if (f & (1 << 0))
+            err_arb = err_arb + 1;
+        else
+            err_other = err_other + 1;
+
+        // still push event if you want state logs
+        can_evt_t e = {};
+        e.type = CAN_EVT_ERROR;
+        e.errFlags = f;
+        pushEventFromISR(e);
+
         return false;
     }
 
@@ -107,10 +279,18 @@ namespace CANDriver
                                 const twai_state_change_event_data_t *edata,
                                 void *)
     {
+        can_evt_t e = {};
+        e.type = CAN_EVT_STATE_CHANGE;
+        e.state.oldState = edata->old_sta;
+        e.state.newState = edata->new_sta;
+
+        pushEventFromISR(e);
+
         if (edata->new_sta == TWAI_ERROR_BUS_OFF)
         {
             twai_node_recover(node);
         }
+
         return false;
     }
 
@@ -390,6 +570,46 @@ namespace CANDriver
             return CAN_HEALTH_ERROR;
         }
     }
+
+    twai_error_state_t getErrorStateRaw()
+    {
+        if (!node)
+            return TWAI_ERROR_BUS_OFF; // safest fallback
+
+        twai_node_status_t s;
+        twai_node_get_info(node, &s, nullptr);
+
+        return s.state;
+        // 0 = ACTIVE
+        // 1 = WARNING
+        // 2 = PASSIVE
+        // 3 = BUS_OFF
+    }
+
+    const char *getErrorStateStr()
+    {
+        switch (getErrorStateRaw())
+        {
+        case TWAI_ERROR_ACTIVE:
+            return "ACTIVE";
+        case TWAI_ERROR_WARNING:
+            return "WARNING";
+        case TWAI_ERROR_PASSIVE:
+            return "PASSIVE";
+        case TWAI_ERROR_BUS_OFF:
+            return "BUS_OFF";
+        default:
+            return "UNKNOWN";
+        }
+    }
+
+    bool getStatus(twai_node_status_t &out)
+    {
+        if (!node)
+            return false;
+
+        return twai_node_get_info(node, &out, nullptr) == ESP_OK;
+    }
 }
 
 namespace CANRxBuffer
@@ -474,19 +694,10 @@ namespace CANMonitor
             CANHealthState h = CANDriver::getCANHealth();
             ledSetCANHealth(h);
 
-            // switch (s.state)
-            // {
-            // case TWAI_ERROR_ACTIVE:
-            //     return CAN_HEALTH_OK;
-            // case TWAI_ERROR_WARNING:
-            //     return CAN_HEALTH_DEGRADED;
-            // case TWAI_ERROR_PASSIVE:
-            //     return CAN_HEALTH_ERROR;
-            // case TWAI_ERROR_BUS_OFF:
-            //     return CAN_HEALTH_BUS_OFF;
-            // default:
-            //     return CAN_HEALTH_ERROR;
-            // }
+            // 🔥 PROCESS EVENTS HERE
+            CANDriver::processEvents();
+            // 🔥 PROCESS ERRORS HERE
+            CANDriver::processError();
 
             // ✅ print only when state changes OR every 1s
             if (h != lastState || millis() - lastPrint > 1000)
@@ -494,7 +705,17 @@ namespace CANMonitor
                 lastPrint = millis();
                 lastState = h;
 
-                DEBUG("[CAN] state = %d\n", h);
+                twai_node_status_t s;
+
+                if (CANDriver::getStatus(s))
+                {
+                    DEBUG("[CAN] state=%s(%d) TEC=%u REC=%u TXQ=%u\n",
+                          CANDriver::getErrorStateStr(),
+                          s.state,
+                          s.tx_error_count,
+                          s.rx_error_count,
+                          s.tx_queue_remaining);
+                }
             }
 
             vTaskDelay(pdMS_TO_TICKS(50));
@@ -519,7 +740,7 @@ namespace CANMonitor
         xTaskCreatePinnedToCore(
             task,
             "can_monitor",
-            2048,
+            4096,
             NULL,
             3, // priority
             &taskHandle,

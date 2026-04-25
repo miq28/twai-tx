@@ -31,6 +31,13 @@ namespace CANDriver
     uint32_t getTxQueueFree();
     uint32_t getTxQueueUsed();
     void flushTxQueue();
+
+    twai_error_state_t getErrorStateRaw();   // numeric (enum)
+    const char *getErrorStateStr();          // string
+    bool getStatus(twai_node_status_t &out); // full struct
+
+    void processEvents();
+    void processError();
 }
 
 namespace CANRxBuffer
