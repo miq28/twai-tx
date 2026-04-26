@@ -281,14 +281,14 @@ namespace CANRxBuffer
         if (next == rxTail)
         {
             rxTail = (rxTail + 1) % RX_BUF_SIZE;
-            dropCount++;
+            dropCount = dropCount + 1;
         }
 
         rxBuffer[rxHead].msg = msg;
         rxBuffer[rxHead].timestamp = ts;
         rxHead = next;
 
-        totalFrames++;
+        totalFrames = totalFrames + 1;
         return true;
     }
 

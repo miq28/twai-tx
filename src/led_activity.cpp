@@ -44,8 +44,8 @@ static uint32_t wifiNextFlash = 0;
 static uint32_t wifiFlashUntil = 0;
 
 // ===== API =====
-void ledRxEvent() { rxEvents++; }
-void ledTxEvent() { txEvents++; }
+void ledRxEvent() { rxEvents = rxEvents + 1; }
+void ledTxEvent() { txEvents = txEvents + 1; }
 
 void ledSetCANHealth(CANHealthState state)
 {
