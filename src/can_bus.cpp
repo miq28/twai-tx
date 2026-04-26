@@ -5,6 +5,13 @@
 
 namespace CANDriver
 {
+    struct CANStatus
+    {
+        twai_state_t state;
+        uint32_t tec;
+        uint32_t rec;
+    };
+
     static uint32_t currentBaud = 500000;
     static bool currentListenOnly = false;
     static bool driverRunning = false;
@@ -123,27 +130,32 @@ namespace CANDriver
     void init(uint32_t baud, bool listenOnly)
     {
         startDriver(baud, listenOnly);
+        CANEvents::startTask();
     }
 
     bool reinit(uint32_t baud, bool listenOnly)
     {
-        // CAN_LOG("[CAN] Reinit requested -> baud:%lu listen:%d\n", baud, listenOnly);
-        // twai_stop();
-        // driverRunning = false;
-        // twai_driver_uninstall();
-        // bool ok = startDriver(baud, listenOnly);
-        // // 🔥 clear stale frames from previous driver instance
-        // CANRxBuffer::clear();
-        // // 🔥 CRITICAL FIX: restart RX task
-        // CANRxBuffer::startTask();
-
         CAN_LOG("[CAN] Reinit requested -> baud:%lu listen:%d\n", baud, listenOnly);
+
+        // 1. STOP TASKS FIRST (critical)
+        CANEvents::stopTask(); // <-- new
         CANRxBuffer::stopTask();
+
+        // 2. STOP DRIVER
         twai_stop();
         driverRunning = false;
+
+        // 3. UNINSTALL DRIVER
         twai_driver_uninstall();
+
+        // 4. START DRIVER (fresh)
         bool ok = startDriver(baud, listenOnly);
+
+        // 5. CLEAR BUFFERS
         CANRxBuffer::clear();
+
+        // 6. RESTART TASKS
+        CANEvents::startTask(); // <-- ADD THIS
         CANRxBuffer::startTask();
 
         return ok;
@@ -169,39 +181,22 @@ namespace CANDriver
         return currentListenOnly;
     }
 
-    void handleRecovery()
+    void handleRecovery(const CANStatus &s)
     {
-        twai_status_info_t s;
+        static bool recoveryActive = false;
 
-        if (twai_get_status_info(&s) != ESP_OK)
-            return;
-
-        // BUS OFF → start recovery
-        if (s.state == TWAI_STATE_BUS_OFF)
+        // Step 2: wait until recovery finished
+        if (recoveryActive && s.state == TWAI_STATE_STOPPED)
         {
-            if (!recoveryActive)
-            {
-                CAN_LOG("[CAN] BUS OFF → initiate recovery\n");
-
-                if (twai_initiate_recovery() == ESP_OK)
-                {
-                    recoveryActive = true;
-                }
-            }
-            return;
+            CAN_LOG("[CAN] Recovery complete → restart\n");
+            twai_start();
+            recoveryActive = false;
         }
 
-        // WAIT until STOPPED → THEN restart
-        if (recoveryActive)
+        // Step 3: clear flag when running again (safety)
+        if (s.state == TWAI_STATE_RUNNING)
         {
-            if (s.state == TWAI_STATE_STOPPED)
-            {
-                CAN_LOG("[CAN] Recovery complete → restart\n");
-
-                twai_start(); // 🔥 critical
-                recoveryActive = false;
-            }
-            return;
+            recoveryActive = false;
         }
     }
 
@@ -214,31 +209,84 @@ namespace CANDriver
         if (twai_get_status_info(&s) != ESP_OK)
             return CAN_HEALTH_ERROR;
 
-        // Priority order (highest severity first)
+        return getHealthFromState(
+            s.state,
+            s.tx_error_counter,
+            s.rx_error_counter);
+    }
 
-        if (s.state == TWAI_STATE_BUS_OFF)
-        {
-            currentHealth = CAN_HEALTH_BUS_OFF;
-        }
-        else if (s.tx_error_counter > 255)
-        {
-            // shouldn't normally happen unless unstable
-            currentHealth = CAN_HEALTH_ERROR;
-        }
-        else if (s.tx_error_counter > 127 || s.rx_error_counter > 127)
-        {
-            currentHealth = CAN_HEALTH_ERROR;
-        }
-        else if (s.tx_error_counter > 96 || s.rx_error_counter > 96)
-        {
-            currentHealth = CAN_HEALTH_DEGRADED;
-        }
-        else
-        {
-            currentHealth = CAN_HEALTH_OK;
-        }
+    twai_state_t getStateRaw()
+    {
+        twai_status_info_t s;
+        if (twai_get_status_info(&s) == ESP_OK)
+            return s.state;
 
-        return currentHealth;
+        return TWAI_STATE_STOPPED; // safe fallback
+    }
+
+    const char *getStateStr(twai_state_t s)
+    {
+        switch (s)
+        {
+        case TWAI_STATE_STOPPED:
+            return "STOPPED";
+        case TWAI_STATE_RUNNING:
+            return "RUNNING";
+        case TWAI_STATE_BUS_OFF:
+            return "BUS_OFF";
+        case TWAI_STATE_RECOVERING:
+            return "RECOVERING";
+        default:
+            return "UNKNOWN";
+        }
+    }
+
+    const char *getStateStr()
+    {
+        return getStateStr(getStateRaw());
+    }
+
+    CANHealthState getHealthFromState(twai_state_t s,
+                                      uint32_t tec,
+                                      uint32_t rec)
+    {
+        if (s == TWAI_STATE_BUS_OFF)
+            return CAN_HEALTH_BUS_OFF;
+
+        if (tec > 127 || rec > 127)
+            return CAN_HEALTH_ERROR;
+
+        if (tec > 96 || rec > 96)
+            return CAN_HEALTH_DEGRADED;
+
+        return CAN_HEALTH_OK;
+    }
+
+    bool getStatus(CANStatus &out)
+    {
+        twai_status_info_t s;
+        if (twai_get_status_info(&s) != ESP_OK)
+            return false;
+
+        out.state = s.state;
+        out.tec = s.tx_error_counter;
+        out.rec = s.rx_error_counter;
+        return true;
+    }
+
+    CANHealthState getHealth(const CANStatus &s)
+    {
+        return getHealthFromState(s.state, s.tec, s.rec);
+    }
+
+    void logStatus(const CANStatus &s)
+    {
+        const char *state_str = getStateStr(s.state);
+
+        CAN_LOG("[CAN] %s TEC=%d REC=%d\n",
+                state_str,
+                s.tec,
+                s.rec);
     }
 }
 
@@ -299,64 +347,9 @@ namespace CANRxBuffer
 
         rxRunning = true;
 
-        CANHealthState lastHealth = CAN_HEALTH_OK;
-
-        uint32_t lastHealthPrint = 0;
-
         while (rxRunning)
         {
-            uint32_t now = millis();
-
-            // =========================================================
-            // Auto-recovery handling (non-blocking)
-            // =========================================================
-            CANDriver::handleRecovery();
-
-            // =========================================================
-            // CAN HEALTH (clean, stable)
-            // =========================================================
-            CANHealthState h = CANDriver::getCANHealth();
-
-            // update LED (always safe, very cheap)
-            ledSetCANHealth(h);
-
-            // debug print (throttled)
-            if (now - lastHealthPrint > 200)
-            {
-                lastHealthPrint = now;
-
-                twai_status_info_t s;
-                if (twai_get_status_info(&s) == ESP_OK)
-                {
-                    CAN_LOG("[CAN DBG] TEC=%d REC=%d state=%d\n",
-                            s.tx_error_counter,
-                            s.rx_error_counter,
-                            s.state);
-                }
-
-                switch (h)
-                {
-                case CAN_HEALTH_OK:
-                    DEBUG_PRINTLN("[CAN] OK");
-                    break;
-
-                case CAN_HEALTH_DEGRADED:
-                    DEBUG_PRINTLN("[CAN] DEGRADED");
-                    break;
-
-                case CAN_HEALTH_ERROR:
-                    DEBUG_PRINTLN("[CAN] ERROR");
-                    break;
-
-                case CAN_HEALTH_BUS_OFF:
-                    DEBUG_PRINTLN("[CAN] BUS OFF");
-                    break;
-                }
-            }
-
-            // =========================================================
-            // RECEIVE (short timeout = responsive + safe)
-            // =========================================================
+            // ---- RECEIVE ONLY (critical path) ----
             if (twai_receive(&msg, pdMS_TO_TICKS(10)) == ESP_OK)
             {
                 (void)push(msg, micros());
@@ -372,94 +365,6 @@ namespace CANRxBuffer
         rxTaskHandle = nullptr;
         vTaskDelete(NULL);
     }
-
-    /*
-    // ===== TASK =====
-    void task(void *)
-    {
-        twai_message_t msg;
-
-        rxRunning = true;
-
-        while (rxRunning)
-        {
-            static uint32_t lastHealthPrint = 0;
-
-            if (millis() - lastHealthPrint > 200)
-            {
-                lastHealthPrint = millis();
-
-                CANHealthState h = CANDriver::getCANHealth();
-
-                switch (h)
-                {
-                case CAN_HEALTH_OK:
-                    DEBUG_PRINTLN("[CAN] OK");
-                    break;
-
-                case CAN_HEALTH_DEGRADED:
-                    DEBUG_PRINTLN("[CAN] DEGRADED");
-                    break;
-
-                case CAN_HEALTH_ERROR:
-                    DEBUG_PRINTLN("[CAN] ERROR");
-                    break;
-
-                case CAN_HEALTH_BUS_OFF:
-                    DEBUG_PRINTLN("[CAN] BUS OFF");
-                    break;
-                }
-            }
-
-            // --- alerts (non-blocking)
-            uint32_t alerts = 0;
-            if (twai_read_alerts(&alerts, 0) == ESP_OK && alerts)
-            {
-                // if (alerts & (TWAI_ALERT_ERR_PASS |
-                // TWAI_ALERT_BUS_ERROR |
-                // TWAI_ALERT_RX_QUEUE_FULL |
-                // TWAI_ALERT_TX_FAILED |
-                // TWAI_ALERT_BUS_OFF))
-                // {
-                // ledCanErrorEvent();
-                // }
-
-                // if (alerts & TWAI_ALERT_ERR_PASS)
-                //     DEBUG_PRINTLN("[CAN] Alert: Error Passive");
-
-                // if (alerts & TWAI_ALERT_BUS_ERROR)
-                //     DEBUG_PRINTLN("[CAN] Alert: Bus Error");
-
-                // if (alerts & TWAI_ALERT_BUS_OFF)
-                //     DEBUG_PRINTLN("[CAN] Alert: Bus Off");
-
-                // if (alerts & TWAI_ALERT_RX_QUEUE_FULL)
-                //     DEBUG_PRINTLN("[CAN] Alert: RX Queue Full");
-
-                // if (alerts & TWAI_ALERT_TX_FAILED)
-                //     DEBUG_PRINTLN("[CAN] Alert: TX Failed");
-
-                // if (alerts & TWAI_ALERT_ARB_LOST)
-                //     DEBUG_PRINTLN("[CAN] Alert: Arbitration Lost");
-
-                ledCanErrorEvent();
-            }
-
-            // --- receive (short timeout = safe shutdown)
-            if (twai_receive(&msg, pdMS_TO_TICKS(10)) == ESP_OK)
-            {
-                (void)push(msg, micros());
-                ledRxEvent();
-            }
-        }
-
-        // signal fully stopped
-        xEventGroupSetBits(rxEventGroup, RX_TASK_STOPPED_BIT);
-
-        rxTaskHandle = nullptr;
-        vTaskDelete(NULL);
-    }
-        */
 
     // ===== POP =====
     bool pop(CANRxItem &out)
@@ -558,3 +463,103 @@ namespace CANRxBuffer
 // {
 //     CANHealthState currentHealth = CAN_HEALTH_OK;
 // }
+
+namespace CANEvents
+{
+    static twai_state_t last_state = TWAI_STATE_STOPPED;
+
+    static TaskHandle_t evtTaskHandle = nullptr;
+    static volatile bool evtRunning = false;
+
+    void process()
+    {
+        uint32_t now = millis();
+
+        // -------------------------
+        // ALERT EVENTS (non-blocking)
+        // -------------------------
+        uint32_t alerts;
+        if (twai_read_alerts(&alerts, 0) == ESP_OK && alerts)
+        {
+            if (alerts & TWAI_ALERT_BUS_OFF)
+            {
+                CAN_LOG("[CAN EVT] BUS OFF → start recovery\n");
+                if (twai_initiate_recovery() == ESP_OK)
+                {
+                    // mark active via static inside handleRecovery
+                }
+            }
+
+            if (alerts & TWAI_ALERT_ERR_PASS)
+            {
+                CAN_LOG("[CAN EVT] ERROR PASSIVE\n");
+            }
+        }
+
+        // -------------------------
+        // SINGLE STATUS FETCH
+        // -------------------------
+        CANDriver::CANStatus st;
+        if (!CANDriver::getStatus(st))
+            return;
+
+        // -------------------------
+        // RECOVERY (state-based)
+        // -------------------------
+        CANDriver::handleRecovery(st);
+
+        // -------------------------
+        // LED (health)
+        // -------------------------
+        CANHealthState h = CANDriver::getHealth(st);
+        ledSetCANHealth(h);
+
+        // -------------------------
+        // LOG (throttled)
+        // -------------------------
+        static uint32_t lastPrint = 0;
+        if (now - lastPrint > 200)
+        {
+            lastPrint = now;
+            CANDriver::logStatus(st);
+        }
+    }
+
+    void canEventTask(void *)
+    {
+        evtRunning = true;
+
+        while (evtRunning)
+        {
+            CANEvents::process();
+            vTaskDelay(1);
+        }
+
+        evtTaskHandle = nullptr;
+        vTaskDelete(NULL);
+    }
+
+    void startTask()
+    {
+        if (evtTaskHandle)
+            return;
+
+        xTaskCreatePinnedToCore(
+            canEventTask,
+            "can_evt",
+            3072,
+            NULL,
+            10,
+            &evtTaskHandle, // <-- important
+            1);
+    }
+
+    void stopTask()
+    {
+        if (evtTaskHandle)
+        {
+            evtRunning = false;
+            vTaskDelay(pdMS_TO_TICKS(10)); // allow exit
+        }
+    }
+}
