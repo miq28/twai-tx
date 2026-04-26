@@ -31,6 +31,9 @@ namespace CANDriver
 
     static twai_node_handle_t node = nullptr;
 
+    // >>> ADD THIS <<<
+    static volatile bool canTxAllowed = true;
+
     // ================= EVENT BUFFER =================
 
     typedef enum
@@ -279,6 +282,11 @@ namespace CANDriver
                                 const twai_state_change_event_data_t *edata,
                                 void *)
     {
+        // if (edata->old_sta == edata->new_sta)
+        // {
+        //     return false; // 🚀 drop useless event
+        // }
+
         can_evt_t e = {};
         e.type = CAN_EVT_STATE_CHANGE;
         e.state.oldState = edata->old_sta;
@@ -304,7 +312,7 @@ namespace CANDriver
             .bit_timing = {
                 .bitrate = baud,
             },
-            .tx_queue_depth = 64,
+            .tx_queue_depth = 8, // initially was 64
             .flags = {
                 .enable_listen_only = listenOnly,
             }};
@@ -421,13 +429,18 @@ namespace CANDriver
             NULL,
             1);
 
-        CANRxBuffer::clear();
+        // CANRxBuffer::clear();
         // CANRxBuffer::startTask(); // if you still use it
         CANMonitor::startTask(); // ✅ new
     }
 
     bool sendAsync(const twai_message_t &msg)
     {
+        if (!canTxAllowed)
+        {
+            return false; // 🚫 block all TX while recovering
+        }
+
         if (!canTxQueue)
             return false;
 
@@ -493,51 +506,58 @@ namespace CANDriver
 
         bool ok = startDriver(baud, listenOnly);
 
-        CANRxBuffer::clear();
-        // CANRxBuffer::startTask();
-        CANMonitor::startTask();
+        if (ok)
+        {
+            txAttempt = 0;
+            txSuccess = 0;
+            txDrop = 0;
+
+            // CANRxBuffer::clear();
+            // CANRxBuffer::startTask();
+            CANMonitor::startTask();
+        }
 
         return ok;
     }
 
-    bool send(const twai_message_t &msg)
-    {
-        if (!CANDriver::isRunning())
-            return false;
+    // bool send(const twai_message_t &msg)
+    // {
+    //     if (!CANDriver::isRunning())
+    //         return false;
 
-        if (!node)
-            return false;
+    //     if (!node)
+    //         return false;
 
-        // 🔥 DEBUG + CLAMP HERE
-        uint8_t dlc = msg.data_length_code;
+    //     // 🔥 DEBUG + CLAMP HERE
+    //     uint8_t dlc = msg.data_length_code;
 
-        if (dlc > 8)
-        {
-            static uint32_t lastWarn = 0;
-            if (millis() - lastWarn > 1000) // rate limit
-            {
-                lastWarn = millis();
-                DEBUG("[WARN] DLC corrupted: %u\n", dlc);
-            }
-            dlc = 8;
-        }
+    //     if (dlc > 8)
+    //     {
+    //         static uint32_t lastWarn = 0;
+    //         if (millis() - lastWarn > 1000) // rate limit
+    //         {
+    //             lastWarn = millis();
+    //             DEBUG("[WARN] DLC corrupted: %u\n", dlc);
+    //         }
+    //         dlc = 8;
+    //     }
 
-        uint8_t buf[8]; // 🔥 FIX
+    //     uint8_t buf[8]; // 🔥 FIX
 
-        twai_frame_t frame = {};
-        frame.header.id = msg.identifier;
-        frame.header.ide = msg.extd;
-        frame.header.rtr = msg.rtr;
-        frame.buffer = buf;
-        frame.buffer_len = dlc;
+    //     twai_frame_t frame = {};
+    //     frame.header.id = msg.identifier;
+    //     frame.header.ide = msg.extd;
+    //     frame.header.rtr = msg.rtr;
+    //     frame.buffer = buf;
+    //     frame.buffer_len = dlc;
 
-        if (!msg.rtr && dlc > 0)
-        {
-            memcpy(buf, msg.data, dlc);
-        }
+    //     if (!msg.rtr && dlc > 0)
+    //     {
+    //         memcpy(buf, msg.data, dlc);
+    //     }
 
-        return twai_node_transmit(node, &frame, 0) == ESP_OK;
-    }
+    //     return twai_node_transmit(node, &frame, 0) == ESP_OK;
+    // }
 
     bool isRunning() { return driverRunning; }
     uint32_t getCurrentBaud() { return currentBaud; }
@@ -611,7 +631,7 @@ namespace CANDriver
         if (!node)
             return false;
 
-        return twai_node_recover(node) == ESP_OK;
+        return twai_node_recover(node);
     }
 }
 
@@ -699,6 +719,7 @@ namespace CANMonitor
 
             // 🔥 PROCESS EVENTS HERE
             CANDriver::processEvents();
+
             // 🔥 PROCESS ERRORS HERE
             CANDriver::processError();
 
@@ -709,15 +730,37 @@ namespace CANMonitor
 
             if (state == TWAI_ERROR_BUS_OFF)
             {
-                if (millis() - lastRecover > 1000)
+                CANDriver::canTxAllowed = false; // 🚫 stop TX immediately
+                CANDriver::flushTxQueue();
+                if (millis() - lastRecover > 3000)
                 {
                     lastRecover = millis();
 
-                    if (CANDriver::recover())
+                    esp_err_t result = CANDriver::recover();
+
+                    switch (result)
                     {
-                        DEBUG("[CAN] Recovering from BUS_OFF\n");
+                    case ESP_OK:
+                        DEBUG("[CAN] RECOVERY SUCCESSFUL\n");
+                        break;
+
+                    case (ESP_ERR_INVALID_STATE):
+                        DEBUG("[CAN] RECOVERY FAILED - Invalid State\n");
+                        break;
+
+                    default:
+                        DEBUG("[CAN] RECOVERY FAILED - Unknown Error\n");
+                        break;
                     }
                 }
+            }
+            else if (state == TWAI_ERROR_ACTIVE)
+            {
+                CANDriver::canTxAllowed = true; // ✅ only re-enable here
+            }
+            else
+            {
+                lastRecover = 0; // reset timer when not bus off
             }
 
             // ✅ print only when state changes OR every 1s
