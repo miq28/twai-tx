@@ -130,10 +130,10 @@ void applyCANConfig(uint32_t baud, bool listenOnly)
     bool oldListen = CANDriver::isListenOnly();
 
     if (oldBaud == baud && oldListen == listenOnly)
+    {
+        DEBUG("Baud and listenOnly unchanged\n");
         return;
-
-    // Apply to driver
-    CANDriver::reinit(baud, listenOnly);
+    }
 
     // Update runtime copy
     settings.CANBaud = baud;
@@ -144,7 +144,12 @@ void applyCANConfig(uint32_t baud, bool listenOnly)
     prefs.begin(PREF_NAME, false);
     prefs.putUInt("CANBaud", baud);
     prefs.putBool("listenOnly", listenOnly);
+    DEBUG("Settings updated, CANBaud: %u\n", prefs.getUInt("CANBaud"));
+    DEBUG("Settings updated, listenOnly: %d\n", prefs.getBool("listenOnly"));   
     prefs.end();
+
+    // Apply to driver
+    CANDriver::reinit(baud, listenOnly);
 }
 
 void changeWifiMode(uint8_t mode)

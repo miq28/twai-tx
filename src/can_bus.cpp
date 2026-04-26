@@ -117,6 +117,7 @@ namespace CANDriver
         if (twai_start() != ESP_OK)
         {
             CAN_LOG("[CAN] Start failed\n");
+            driverRunning = false;
             return false;
         }
 
