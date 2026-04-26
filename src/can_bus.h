@@ -55,3 +55,15 @@ namespace CANEvents
     void stopTask();
     void process();
 }
+
+namespace CANTxBuffer
+{
+    void startTask();
+    void stopTask();
+    bool push(const twai_message_t &msg);
+
+    uint32_t getTxOk();
+    uint32_t getTxFail();
+    uint32_t getTxDrop();
+    void resetStats();
+}

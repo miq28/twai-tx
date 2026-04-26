@@ -132,6 +132,7 @@ namespace CANDriver
     {
         startDriver(baud, listenOnly);
         CANEvents::startTask();
+        CANTxBuffer::startTask();
     }
 
     bool reinit(uint32_t baud, bool listenOnly)
@@ -141,6 +142,7 @@ namespace CANDriver
         // 1. STOP TASKS FIRST (critical)
         CANEvents::stopTask(); // <-- new
         CANRxBuffer::stopTask();
+        CANTxBuffer::stopTask();
 
         // 2. STOP DRIVER
         twai_stop();
@@ -158,6 +160,7 @@ namespace CANDriver
         // 6. RESTART TASKS
         CANEvents::startTask(); // <-- ADD THIS
         CANRxBuffer::startTask();
+        CANTxBuffer::startTask();
 
         return ok;
     }
@@ -562,5 +565,124 @@ namespace CANEvents
             evtRunning = false;
             vTaskDelay(pdMS_TO_TICKS(10)); // allow exit
         }
+    }
+}
+
+namespace CANTxBuffer
+{
+    // ===== CONTROL =====
+    static TaskHandle_t txTaskHandle = nullptr;
+    static volatile bool txRunning = false;
+
+    // ===== BUFFER =====
+    constexpr uint16_t TX_BUF_SIZE = 1024;
+
+    struct TXItem
+    {
+        twai_message_t msg;
+    };
+
+    static TXItem txBuffer[TX_BUF_SIZE];
+    static volatile uint16_t txHead = 0;
+    static volatile uint16_t txTail = 0;
+
+    static volatile uint32_t tx_ok = 0;
+    static volatile uint32_t tx_fail = 0;
+    static volatile uint32_t tx_drop = 0;
+
+    // ===== PUSH =====
+    bool push(const twai_message_t &msg)
+    {
+        uint16_t next = (txHead + 1) % TX_BUF_SIZE;
+
+        if (next == txTail)
+        {
+            tx_drop = tx_drop + 1; // buffer full → drop (no blocking)
+            return false;
+        }
+
+        txBuffer[txHead].msg = msg;
+        txHead = next;
+        return true;
+    }
+
+    // ===== POP =====
+    bool pop(twai_message_t &msg)
+    {
+        if (txTail == txHead)
+            return false;
+
+        msg = txBuffer[txTail].msg;
+        txTail = (txTail + 1) % TX_BUF_SIZE;
+        return true;
+    }
+
+    // ===== TASK =====
+    void task(void *)
+    {
+        twai_message_t msg;
+        txRunning = true;
+
+        while (txRunning)
+        {
+            if (!pop(msg))
+            {
+                vTaskDelay(1);
+                continue;
+            }
+
+            // small blocking wait → prevents retry storm
+            if (twai_transmit(&msg, pdMS_TO_TICKS(2)) == ESP_OK)
+            {
+                tx_ok = tx_ok + 1;
+                ledTxEvent();
+            }
+            else
+            {
+                tx_fail = tx_fail + 1;
+                // no immediate retry
+            }
+        }
+
+        txTaskHandle = nullptr;
+        vTaskDelete(NULL);
+    }
+
+    // ===== START =====
+    void startTask()
+    {
+        if (txTaskHandle)
+            return;
+
+        txRunning = true;
+
+        xTaskCreatePinnedToCore(
+            task,
+            "can_tx",
+            4096,
+            NULL,
+            15,
+            &txTaskHandle,
+            1); // same core as RX is fine
+    }
+
+    // ===== STOP =====
+    void stopTask()
+    {
+        if (txTaskHandle)
+        {
+            txRunning = false;
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+    }
+
+    // ===== STATS =====
+    uint32_t getTxOk() { return tx_ok; }
+    uint32_t getTxFail() { return tx_fail; }
+    uint32_t getTxDrop() { return tx_drop; }
+
+    void resetStats()
+    {
+        tx_ok = tx_fail = tx_drop = 0;
     }
 }

@@ -8,39 +8,43 @@
 
 namespace
 {
-uint8_t currentId = 0;
-uint32_t counter = 0;
-uint64_t lastFrameUs = 0;
-uint64_t lastSlowUs = 0;
-uint32_t frameCount = 0;
-uint64_t lastFpsUs = 0;
+    uint8_t currentId = 0;
+    uint32_t counter = 0;
+    uint64_t lastFrameUs = 0;
+    uint64_t lastSlowUs = 0;
+    uint32_t frameCount = 0;
+    uint64_t lastFpsUs = 0;
 
-uint64_t last10ms = 0;
-uint64_t last20ms = 0;
-uint64_t last1000ms = 0;
-uint16_t rpm = 800;
-uint16_t speed = 0;
+    uint64_t last10ms = 0;
+    uint64_t last20ms = 0;
+    uint64_t last1000ms = 0;
+    uint16_t rpm = 800;
+    uint16_t speed = 0;
 }
 
 void generatorLoop()
 {
-    if (!appState.running) return;
+    if (!appState.running)
+        return;
 
     uint64_t now = esp_timer_get_time();
 
     if (appState.mode == MODE_SLOW)
     {
-        if (now - lastSlowUs < 3000000ULL) return;
+        if (now - lastSlowUs < 3000000ULL)
+            return;
         lastSlowUs = now;
     }
     else if (appState.delay_us > 0)
     {
-        if (now - lastFrameUs < (uint64_t)appState.delay_us) return;
+        if (now - lastFrameUs < (uint64_t)appState.delay_us)
+            return;
     }
     else if (appState.target_fps > 0)
     {
         uint32_t interval = 1000000ULL / appState.target_fps;
-        if (now - lastFrameUs < interval) return;
+        if (now - lastFrameUs < interval)
+            return;
     }
 
     twai_message_t msg = {};
@@ -49,7 +53,8 @@ void generatorLoop()
     msg.data_length_code = 8;
 
     uint32_t id = appState.locked_id >= 0 ? appState.locked_id : currentId;
-    if (canFrameCfg.extended) id |= 0x100;
+    if (canFrameCfg.extended)
+        id |= 0x100;
     msg.identifier = id;
 
     msg.data[0] = (counter >> 0) & 0xFF;
@@ -61,27 +66,36 @@ void generatorLoop()
     msg.data[6] = 0x66;
     msg.data[7] = 0x77;
 
-    if (CANDriver::send(msg))
+    // if (CANDriver::send(msg))
+    if (CANTxBuffer::push(msg))
     {
-        ledTxEvent();   // 🔥 ONLY on success
+        ledTxEvent(); // 🔥 ONLY on success
         counter++;
         frameCount++;
         lastFrameUs = now;
 
-        if (appState.locked_id < 0) currentId = (currentId + 1) % 10;
+        if (appState.locked_id < 0)
+            currentId = (currentId + 1) % 10;
     }
 
     if (now - lastFpsUs >= 1000000ULL)
     {
         lastFpsUs = now;
-        DEBUG("FPS: %lu\n", frameCount);
+        // DEBUG("FPS: %lu\n", frameCount);
+
+        DEBUG("TX_OK:%lu FAIL:%lu DROP:%lu\n",
+              CANTxBuffer::getTxOk(),
+              CANTxBuffer::getTxFail(),
+              CANTxBuffer::getTxDrop());
+
         frameCount = 0;
     }
 }
 
 void ecuLoop()
 {
-    if (!appState.running) return;
+    if (!appState.running)
+        return;
 
     uint64_t now = esp_timer_get_time();
     twai_message_t msg = {};
@@ -95,7 +109,8 @@ void ecuLoop()
         msg.data_length_code = 2;
 
         rpm += 10;
-        if (rpm > 4000) rpm = 800;
+        if (rpm > 4000)
+            rpm = 800;
 
         msg.data[0] = rpm & 0xFF;
         msg.data[1] = (rpm >> 8) & 0xFF;
@@ -109,7 +124,8 @@ void ecuLoop()
         msg.data_length_code = 2;
 
         speed += 1;
-        if (speed > 120) speed = 0;
+        if (speed > 120)
+            speed = 0;
 
         msg.data[0] = speed & 0xFF;
         msg.data[1] = (speed >> 8) & 0xFF;
