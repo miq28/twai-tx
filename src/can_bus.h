@@ -66,4 +66,5 @@ namespace CANTxBuffer
     uint32_t getTxFail();
     uint32_t getTxDrop();
     void resetStats();
+    void clear();
 }

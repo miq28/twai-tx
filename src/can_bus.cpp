@@ -17,7 +17,7 @@ namespace CANDriver
     static bool driverRunning = false;
 
     // ===== auto-recovery =====
-    static bool recoveryActive = false;
+    static volatile bool recoveryActive;
     static uint32_t recoveryStartTime = 0;
 
     bool getTiming(uint32_t baud, twai_timing_config_t &timing)
@@ -188,6 +188,7 @@ namespace CANDriver
         if (recoveryActive && s.state == TWAI_STATE_STOPPED)
         {
             CAN_LOG("[CAN] Recovery complete → restart\n");
+            twai_stop();
             twai_start();
             recoveryActive = false;
         }
@@ -478,31 +479,37 @@ namespace CANEvents
         // ALERT EVENTS (non-blocking)
         // -------------------------
         uint32_t alerts;
-        static uint32_t recoveryStart = 0;
+
         if (twai_read_alerts(&alerts, 0) == ESP_OK && alerts)
         {
             if (alerts & TWAI_ALERT_BUS_OFF)
             {
                 CAN_LOG("[CAN EVT] BUS OFF → start recovery\n");
+
                 if (twai_initiate_recovery() == ESP_OK)
                 {
-                    // mark active via static inside handleRecovery
-                    CANDriver::recoveryActive = true; // 🔥 ADD THIS
-                    recoveryStart = millis();
-                }
-            }
+                    CANDriver::recoveryActive = true;
+                    CANDriver::recoveryStartTime = now;   // ✅ use this
 
-            if (CANDriver::recoveryActive && millis() - recoveryStart > 2000)
-            {
-                CAN_LOG("[CAN] Recovery timeout → force restart\n");
-                twai_start();
-                CANDriver::recoveryActive = false;
+                    CANTxBuffer::clear();
+                }
             }
 
             if (alerts & TWAI_ALERT_ERR_PASS)
             {
                 CAN_LOG("[CAN EVT] ERROR PASSIVE\n");
             }
+        }
+
+        // -------------------------
+        // TIMEOUT (independent)
+        // -------------------------
+        if (CANDriver::recoveryActive && (now - CANDriver::recoveryStartTime > 2000))
+        {
+            CAN_LOG("[CAN] Recovery timeout → force restart\n");
+            twai_stop();
+            twai_start();
+            CANDriver::recoveryActive = false;
         }
 
         // -------------------------
@@ -630,6 +637,13 @@ namespace CANTxBuffer
 
         while (txRunning)
         {
+            // STOP transmitting during recovery
+            if (CANDriver::getStateRaw() == TWAI_STATE_RECOVERING)
+            {
+                vTaskDelay(1);
+                continue;
+            }
+
             if (!pop(msg))
             {
                 vTaskDelay(1);
@@ -691,5 +705,10 @@ namespace CANTxBuffer
         tx_ok = 0;
         tx_fail = 0;
         tx_drop = 0;
+    }
+
+    void clear()
+    {
+        txTail = txHead;
     }
 }

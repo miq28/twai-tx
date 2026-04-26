@@ -27,6 +27,10 @@ void generatorLoop()
     if (!appState.running)
         return;
 
+        // STOP transmitting during recovery
+    if (CANDriver::getStateRaw() == TWAI_STATE_RECOVERING)
+        return;
+
     uint64_t now = esp_timer_get_time();
 
     if (appState.mode == MODE_SLOW)
