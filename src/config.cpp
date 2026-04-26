@@ -41,14 +41,25 @@ void printFlashID()
 void checkESPBoard()
 {
     // ===== BASIC =====
+    DEBUG("ESP-IDF: %s\n", esp_get_idf_version());
+
+// 2. Get Arduino Core Version (Safe check)
+#ifdef ESP_ARDUINO_VERSION_STR
+    DEBUG("Arduino Core: %s\n", ESP_ARDUINO_VERSION_STR);
+#elif defined(ARDUINO_ESP32_RELEASE)
+    DEBUG("Arduino Core: %s\n", ARDUINO_ESP32_RELEASE);
+#else
+    DEBUG("Arduino Core: 1.0.x (Legacy)\n");
+#endif
+
     DEBUG("SDK: %s\n", ESP.getSdkVersion());
     DEBUG("Chip: %s Rev %u\n", ESP.getChipModel(), ESP.getChipRevision());
     DEBUG("Cores: %u\n", ESP.getChipCores());
 
     // ===== CLOCK =====
-    DEBUG("CPU: %d MHz\n", getCpuFrequencyMhz());
-    DEBUG("XTAL: %d MHz\n", getXtalFrequencyMhz());
-    DEBUG("APB: %.1f MHz\n", getApbFrequency() / 1000000.0);
+    DEBUG("CPU freq: %d MHz\n", getCpuFrequencyMhz());
+    DEBUG("XTAL freq: %d MHz\n", getXtalFrequencyMhz());
+    DEBUG("APB freq: %.1f MHz\n", getApbFrequency() / 1000000.0);
 
     // ===== MAC =====
     uint64_t mac64 = ESP.getEfuseMac();
@@ -174,5 +185,44 @@ void changePrefsBool(const char *key, bool value)
     prefs.putBool(key, value);
     DEBUG("%s preferences updated to: %d\n", key, prefs.getBool(key));
     prefs.end();
-}       
+}
+
+const char *resetReasonToStr(esp_reset_reason_t r)
+{
+    switch (r)
+    {
+    case ESP_RST_POWERON:
+        return "POWERON"; // Power on or RST pin toggled
+    case ESP_RST_EXT:
+        return "EXTERNAL (EN pin)"; // External pin - not applicable for ESP32
+    case ESP_RST_SW:
+        return "SOFTWARE"; // Software reset via esp_restart
+    case ESP_RST_PANIC:
+        return "PANIC"; // Exception/panic/crash
+    case ESP_RST_INT_WDT:
+        return "INT WDT"; // Interrupt watchdog (software or hardware)
+    case ESP_RST_TASK_WDT:
+        return "TASK WDT"; // Task watchdog
+    case ESP_RST_WDT:
+        return "OTHER WDT"; // Other watchdog
+    case ESP_RST_DEEPSLEEP:
+        return "DEEPSLEEP"; // Reset after exiting deep sleep mode
+    case ESP_RST_BROWNOUT:
+        return "BROWNOUT"; // Brownout reset (software or hardware)
+    case ESP_RST_SDIO:
+        return "SDIO"; // Reset over SDIO
+    case ESP_RST_USB:
+        return "USB"; // Reset by USB peripheral
+    case ESP_RST_JTAG:
+        return "JTAG"; // Reset by JTAG
+    case ESP_RST_EFUSE:
+        return "EFUSE"; // Reset due to efuse error
+    case ESP_RST_PWR_GLITCH:
+        return "POWER_GLITCH"; // Reset due to power glitch detected
+    case ESP_RST_CPU_LOCKUP:
+        return "CPU_LOCKUP"; // Reset due to CPU lock up (double exception)
+    default:
+        return "UNKNOWN"; // Reset reason can not be determined
+    }
+}
 

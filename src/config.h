@@ -103,3 +103,6 @@ void applyCANConfig(uint32_t baud, bool listenOnly);
 void changeWifiMode(uint8_t mode);
 void changePrefsString(const char * key, const char * str);
 void changePrefsBool(const char * key, bool value);
+
+
+const char *resetReasonToStr(esp_reset_reason_t r);
