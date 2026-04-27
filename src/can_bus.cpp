@@ -97,16 +97,28 @@ namespace CANDriver
             timing = TWAI_TIMING_CONFIG_500KBITS();
             baud = 500000;
         }
-        else
-        {
-            CAN_LOG("[CAN] Init OK -> baud: %lu\n", baud);
-        }
 
         twai_filter_config_t filter = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 
-        if (twai_driver_install(&general, &timing, &filter) != ESP_OK)
+        esp_err_t err = twai_driver_install(&general, &timing, &filter);
+
+        if (err == ESP_ERR_INVALID_STATE)
         {
-            CAN_LOG("[CAN] Install failed\n");
+            CAN_LOG("[CAN] Driver already installed → forcing overwrite\n");
+
+            // try to clean up previous stuck driver
+            twai_stop();
+            vTaskDelay(pdMS_TO_TICKS(10));
+            twai_driver_uninstall();
+
+            vTaskDelay(pdMS_TO_TICKS(10));
+
+            err = twai_driver_install(&general, &timing, &filter);
+        }
+
+        if (err != ESP_OK)
+        {
+            CAN_LOG("[CAN] Install failed (%d)\n", err);
             driverRunning = false;
             return false;
         }
@@ -121,8 +133,12 @@ namespace CANDriver
         currentBaud = baud;
         currentListenOnly = listenOnly;
         driverRunning = true;
-        CAN_LOG("[CAN] Started (%s)\n", listenOnly ? "LISTEN ONLY" : "NORMAL");
-        return true;
+
+        CAN_LOG("[CAN] Started (%s) baud:%lu\n",
+                listenOnly ? "LISTEN ONLY" : "NORMAL",
+                baud);
+
+        return true;   // ← ADD THIS
     }
 
     void init(uint32_t baud, bool listenOnly)
@@ -134,36 +150,67 @@ namespace CANDriver
 
     bool reinit(uint32_t baud, bool listenOnly)
     {
+        CANDriver::recoveryActive = false;
+
         CAN_LOG("[CAN] Reinit requested -> baud:%lu listen:%d\n", baud, listenOnly);
 
-        // 1. STOP TASKS FIRST (critical)
-        CANEvents::stopTask(); // <-- new
+        // 1. STOP TASKS FIRST
+        CANEvents::stopTask();
         CANRxBuffer::stopTask();
         CANTxBuffer::stopTask();
 
-        // 2. STOP DRIVER
+        // 2. FORCE STOP
         twai_stop();
         driverRunning = false;
 
-        // 3. UNINSTALL DRIVER
-        twai_driver_uninstall();
+        // 3. TRY UNINSTALL (may fail if RECOVERING)
+        esp_err_t err = twai_driver_uninstall();
 
-        // 4. START DRIVER (fresh)
+        if (err == ESP_ERR_INVALID_STATE)
+        {
+            CAN_LOG("[CAN] Uninstall blocked (RECOVERING) → force retry\n");
+
+            // Try to break state
+            twai_stop();
+            vTaskDelay(pdMS_TO_TICKS(10));
+
+            err = twai_driver_uninstall();
+        }
+
+        if (err != ESP_OK)
+        {
+            CAN_LOG("[CAN] Uninstall failed: %d (continue anyway)\n", err);
+            // continue → startDriver will handle it
+        }
+        else
+        {
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+
+        // 4. START DRIVER (fresh or overwrite)
         bool ok = startDriver(baud, listenOnly);
+        if (!ok)
+        {
+            CAN_LOG("[CAN] startDriver failed → tasks NOT restarted\n");
+            return false;
+        }
 
         // 5. CLEAR BUFFERS
         CANRxBuffer::clear();
 
         // 6. RESTART TASKS
-        CANEvents::startTask(); // <-- ADD THIS
+        CANEvents::startTask();
         CANRxBuffer::startTask();
         CANTxBuffer::startTask();
 
-        return ok;
+        return true;
     }
 
     bool send(const twai_message_t &msg)
     {
+        if (getStateRaw() != TWAI_STATE_RUNNING)
+            return false;
+
         return twai_transmit((twai_message_t *)&msg, 0) == ESP_OK;
     }
 
@@ -184,16 +231,7 @@ namespace CANDriver
 
     void handleRecovery(const CANStatus &s)
     {
-        // Step 2: wait until recovery finished
-        if (recoveryActive && s.state == TWAI_STATE_STOPPED)
-        {
-            CAN_LOG("[CAN] Recovery complete → restart\n");
-            twai_stop();
-            twai_start();
-            recoveryActive = false;
-        }
-
-        // Step 3: clear flag when running again (safety)
+        // Clear flag once back to running
         if (s.state == TWAI_STATE_RUNNING)
         {
             recoveryActive = false;
@@ -489,7 +527,7 @@ namespace CANEvents
                 if (twai_initiate_recovery() == ESP_OK)
                 {
                     CANDriver::recoveryActive = true;
-                    CANDriver::recoveryStartTime = now;   // ✅ use this
+                    CANDriver::recoveryStartTime = now; // ✅ use this
 
                     CANTxBuffer::clear();
                 }
@@ -506,10 +544,14 @@ namespace CANEvents
         // -------------------------
         if (CANDriver::recoveryActive && (now - CANDriver::recoveryStartTime > 2000))
         {
-            CAN_LOG("[CAN] Recovery timeout → force restart\n");
-            twai_stop();
-            twai_start();
+            CAN_LOG("[CAN] Recovery timeout → FULL REINIT\n");
+
+            CANDriver::reinit(
+                CANDriver::getCurrentBaud(),
+                CANDriver::isListenOnly());
+
             CANDriver::recoveryActive = false;
+            return; // prevent using stale driver state this cycle
         }
 
         // -------------------------
@@ -602,6 +644,9 @@ namespace CANTxBuffer
     static volatile uint32_t tx_fail = 0;
     static volatile uint32_t tx_drop = 0;
 
+    static bool noAckActive = false;
+    static uint32_t noAckStart = 0;
+
     // ===== PUSH =====
     bool push(const twai_message_t &msg)
     {
@@ -637,8 +682,10 @@ namespace CANTxBuffer
 
         while (txRunning)
         {
-            // STOP transmitting during recovery
-            if (CANDriver::getStateRaw() == TWAI_STATE_RECOVERING)
+            // STOP transmitting during any invalid state
+            twai_state_t st = CANDriver::getStateRaw();
+
+            if (st != TWAI_STATE_RUNNING)
             {
                 vTaskDelay(1);
                 continue;
@@ -650,7 +697,7 @@ namespace CANTxBuffer
                 continue;
             }
 
-            // small blocking wait → prevents retry storm
+            // ---- TRANSMIT ----
             if (twai_transmit(&msg, pdMS_TO_TICKS(2)) == ESP_OK)
             {
                 tx_ok = tx_ok + 1;
@@ -659,7 +706,39 @@ namespace CANTxBuffer
             else
             {
                 tx_fail = tx_fail + 1;
-                // no immediate retry
+
+                // ---- NO ACK DETECTION ----
+                twai_status_info_t s;
+                if (twai_get_status_info(&s) == ESP_OK)
+                {
+                    if (s.tx_error_counter > 32 && s.rx_error_counter == 0)
+                    {
+                        if (!noAckActive)
+                        {
+                            noAckActive = true;
+                            noAckStart = millis();
+                            CAN_LOG("[CAN] No ACK → throttling\n");
+                        }
+                    }
+                }
+            }
+
+            // ---- THROTTLE BLOCK (PUT HERE) ----
+            if (noAckActive)
+            {
+                vTaskDelay(pdMS_TO_TICKS(50));
+
+                twai_status_info_t s;
+                if (twai_get_status_info(&s) == ESP_OK)
+                {
+                    if (s.tx_error_counter < 16)
+                    {
+                        noAckActive = false;
+                        CAN_LOG("[CAN] ACK restored\n");
+                    }
+                }
+
+                continue;
             }
         }
 

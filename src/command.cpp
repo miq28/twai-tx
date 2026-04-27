@@ -266,13 +266,22 @@ namespace
             if (newMode != appState.mode)
             {
                 CANRxBuffer::clear(); // 🔥 CRITICAL: drop old frames
+                CANTxBuffer::clear(); // ← ADD THIS
                 appState.mode = newMode;
             }
             break;
         }
         case CMD_SET_BAUD:
+        {
+            if (CANDriver::getStateRaw() == TWAI_STATE_RECOVERING)
+            {
+                DEBUG_PRINTLN("[CAN] Busy (RECOVERING) → baud change ignored");
+                break;
+            }
+
             applyCANConfig(cmd.value_u32, CANDriver::isListenOnly());
             break;
+        }
         case CMD_SET_FPS:
             appState.target_fps = cmd.value_int;
             break;
@@ -283,8 +292,16 @@ namespace
             appState.locked_id = cmd.value_int;
             break;
         case CMD_SET_LISTEN:
+        {
+            if (CANDriver::getStateRaw() == TWAI_STATE_RECOVERING)
+            {
+                DEBUG_PRINTLN("[CAN] Busy (RECOVERING) → listen change ignored");
+                break;
+            }
+
             applyCANConfig(CANDriver::getCurrentBaud(), cmd.value_bool);
             break;
+        }
         case CMD_STATUS:
             DEBUG("Mode:%d Baud:%lu, Running:%s listen-only:%s FPS:%d\n",
                   appState.mode,

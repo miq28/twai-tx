@@ -127,11 +127,49 @@ void loadSettings()
 void applyCANConfig(uint32_t baud, bool listenOnly)
 {
     uint32_t oldBaud = CANDriver::getCurrentBaud();
+
+    // If driver is not running, force reapply
+    if (!CANDriver::isRunning())
+    {
+        oldBaud = 0; // force mismatch
+    }
+
     bool oldListen = CANDriver::isListenOnly();
 
     if (oldBaud == baud && oldListen == listenOnly)
     {
         DEBUG("Baud and listenOnly unchanged\n");
+
+        DEBUG("[CAN] currentBaud=%lu running=%d state=%s\n",
+              CANDriver::getCurrentBaud(),
+              CANDriver::isRunning(),
+              CANDriver::getStateStr());
+
+        return;
+    }
+
+    // ---- GUARD: do not reinit while unstable ----
+    twai_state_t st = CANDriver::getStateRaw();
+
+    // Allow reinit if driver is already broken (not running)
+    if (CANDriver::isRunning())
+    {
+        if (st != TWAI_STATE_RUNNING && st != TWAI_STATE_STOPPED)
+        {
+            DEBUG("[CAN] Busy (%s) → config ignored\n", CANDriver::getStateStr(st));
+
+            DEBUG("[CAN] currentBaud=%lu running=%d\n",
+                  CANDriver::getCurrentBaud(),
+                  CANDriver::isRunning());
+
+            return;
+        }
+    }
+
+    // Apply to driver
+    if (!CANDriver::reinit(baud, listenOnly))
+    {
+        DEBUG("[CAN] REINIT FAILED → state:%s\n", CANDriver::getStateStr());
         return;
     }
 
@@ -144,12 +182,11 @@ void applyCANConfig(uint32_t baud, bool listenOnly)
     prefs.begin(PREF_NAME, false);
     prefs.putUInt("CANBaud", baud);
     prefs.putBool("listenOnly", listenOnly);
-    DEBUG("Settings updated, CANBaud: %u\n", prefs.getUInt("CANBaud"));
-    DEBUG("Settings updated, listenOnly: %d\n", prefs.getBool("listenOnly"));   
-    prefs.end();
 
-    // Apply to driver
-    CANDriver::reinit(baud, listenOnly);
+    DEBUG("Settings updated, CANBaud: %u\n", baud);
+    DEBUG("Settings updated, listenOnly: %d\n", listenOnly);
+
+    prefs.end();
 }
 
 void changeWifiMode(uint8_t mode)
@@ -163,7 +200,7 @@ void changeWifiMode(uint8_t mode)
     ESP.restart();
 }
 
-void changePrefsString(const char * key, const char * str)
+void changePrefsString(const char *key, const char *str)
 {
     // Persist
     Preferences prefs;
