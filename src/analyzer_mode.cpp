@@ -6,6 +6,7 @@
 #include "transport.h"
 #include "app_mode.h"
 #include "web_server.h"
+#include "config.h"
 
 namespace
 {
@@ -133,7 +134,7 @@ void analyzerSetFilter(bool enable, uint32_t id)
 
 void analyzerLoop()
 {
-    if (appState.mode != MODE_ANALYZER) return;
+    if (settings.mode != MODE_ANALYZER) return;
 
     CANRxItem item;
 

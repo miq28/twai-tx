@@ -9,11 +9,7 @@ void initAppState()
 {
     // ===== APP STATE =====
     appState.running = true;
-#if defined(WEACT_STUDIO_CAN485_V1)
-    appState.mode = MODE_GENERATOR;
-#else
-    appState.mode = MODE_GENERATOR;
-#endif
+
     appState.target_fps = DEFAULT_FPS;
     appState.delay_us = 0;
     appState.locked_id = -1;

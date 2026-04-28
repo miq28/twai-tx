@@ -7,7 +7,9 @@
 #include "can_bus.h"
 #include "gvret_mode.h"
 #include "debug.h"
-#include "config.h"
+#include <Preferences.h>
+#include "config.h"   // for PREF_NAME
+#include "app_mode.h" // good to include explicitly
 
 namespace
 {
@@ -250,7 +252,7 @@ namespace
             break;
         case CMD_SET_MODE:
         {
-            Mode newMode = appState.mode;
+            Mode newMode = settings.mode;
 
             if (strcmp(cmd.str, "generator") == 0)
                 newMode = MODE_GENERATOR;
@@ -263,11 +265,18 @@ namespace
             else if (strcmp(cmd.str, "savvycan") == 0)
                 newMode = MODE_SAVVYCAN;
 
-            if (newMode != appState.mode)
+            if (newMode != settings.mode)
             {
                 CANRxBuffer::clear(); // 🔥 CRITICAL: drop old frames
                 CANTxBuffer::clear(); // ← ADD THIS
-                appState.mode = newMode;
+                settings.mode = newMode;
+
+                settings.mode = newMode;
+
+                // ===== SAVE =====
+                saveSettings();
+
+                DEBUG("[MODE] saved: %d\n", newMode);
             }
             break;
         }
@@ -304,7 +313,7 @@ namespace
         }
         case CMD_STATUS:
             DEBUG("Mode:%d Baud:%lu, Running:%s listen-only:%s FPS:%d\n",
-                  appState.mode,
+                  settings.mode,
                   CANDriver::getCurrentBaud(),
                   CANDriver::isRunning() ? "true" : "false",
                   CANDriver::isListenOnly() ? "true" : "false",
@@ -410,7 +419,7 @@ void dispatchByte(InputContext &, uint8_t b)
         if (escapeCount >= 3)
         {
             CANRxBuffer::clear(); // 🔥
-            appState.mode = MODE_ANALYZER;
+            settings.mode = MODE_ANALYZER;
             escapeCount = 0;
             DEBUG_PRINTLN("[ESC] Exit SAVVYCAN mode");
             return;
@@ -421,14 +430,14 @@ void dispatchByte(InputContext &, uint8_t b)
         escapeCount = 0;
     }
 
-    if (appState.mode != MODE_SAVVYCAN && (b == 0xE7 || b == 0xF1))
+    if (settings.mode != MODE_SAVVYCAN && (b == 0xE7 || b == 0xF1))
     {
         CANRxBuffer::clear(); // 🔥 prevent ghost frames
-        appState.mode = MODE_SAVVYCAN;
+        settings.mode = MODE_SAVVYCAN;
         DEBUG_PRINTLN("[AUTO] Enter SAVVYCAN mode");
     }
 
-    if (appState.mode == MODE_SAVVYCAN)
+    if (settings.mode == MODE_SAVVYCAN)
         processIncomingByte(b);
     else
         cliProcessByte(b);

@@ -85,8 +85,8 @@ void stats()
         if (deltaFrames > 0 || accumOverwrite > 0)
         {
             float overwriteRate = (deltaFrames > 0)
-                ? (100.0f * accumOverwrite / deltaFrames)
-                : 0.0f;
+                                      ? (100.0f * accumOverwrite / deltaFrames)
+                                      : 0.0f;
 
             DEBUG("CAN: fps=%lu overwrite=%lu (%.2f%%) buf=%u max=%u\n",
                   deltaFrames,
@@ -112,10 +112,10 @@ void setup()
     DEBUG("Free heap before setup: %u\n", ESP.getFreeHeap());
 
     checkESPBoard();
+    initAppState();
     loadSettings();
 
     transportInit();
-    initAppState();
     CANDriver::init(settings.CANBaud, settings.listenOnly);
     CANRxBuffer::startTask();
     analyzerInit();
@@ -127,13 +127,13 @@ void setup()
 
 void loop()
 {
-    debug_to_serial = !(appState.mode == MODE_SAVVYCAN);
+    debug_to_serial = !(settings.mode == MODE_SAVVYCAN);
 
     transportProcess();
 
     gvretLoop();
 
-    switch (appState.mode)
+    switch (settings.mode)
     {
     case MODE_GENERATOR:
 
@@ -153,7 +153,7 @@ void loop()
         break;
     }
 
-        // 🔥 ADD HERE
+    // 🔥 ADD HERE
     streamFlush();
 
     // ===== TX handing

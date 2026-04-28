@@ -5,6 +5,7 @@
 #include <esp_timer.h>
 #include "debug.h"
 #include "led_activity.h"
+#include "config.h"
 
 namespace
 {
@@ -33,7 +34,7 @@ void generatorLoop()
 
     uint64_t now = esp_timer_get_time();
 
-    if (appState.mode == MODE_SLOW)
+    if (settings.mode == MODE_SLOW)
     {
         if (now - lastSlowUs < 3000000ULL)
             return;

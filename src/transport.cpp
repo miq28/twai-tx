@@ -5,6 +5,7 @@
 #include "net_manager.h"
 #include "app_mode.h"
 #include "gvret_mode.h"
+#include "config.h"
 
 static InputContext serialCtx;
 
@@ -25,7 +26,7 @@ void transportDispatchByte(uint8_t b)
 void transportDispatchBuffer(const uint8_t *data, size_t len)
 {
     // 🔥 fast path for GVRET (binary mode)
-    if (appState.mode == MODE_SAVVYCAN)
+    if (settings.mode == MODE_SAVVYCAN)
     {
         for (size_t i = 0; i < len; i++)
         {

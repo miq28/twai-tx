@@ -8,6 +8,7 @@
 #include "debug.h"
 #include "net_manager.h"
 #include "transport.h"
+#include "config.h"
 
 // =======================================================
 // ================= FILE API (MERGED)
@@ -221,7 +222,7 @@ void webPushFrame(const CANRxItem &item)
 static String getStatusJson()
 {
     String s = "{";
-    s += "\"mode\":" + String(appState.mode) + ",";
+    s += "\"mode\":" + String(settings.mode) + ",";
     s += "\"baud\":" + String(CANDriver::getCurrentBaud()) + ",";
     s += "\"running\":" + String(appState.running ? "true" : "false") + ",";
     s += "\"listen\":" + String(CANDriver::isListenOnly() ? "true" : "false");
@@ -278,7 +279,18 @@ void webInit()
     server.on("/mode", HTTP_POST, [](AsyncWebServerRequest *req)
               {
         if (req->hasParam("m", true))
-            appState.mode = (Mode)req->getParam("m", true)->value().toInt();
+        {
+            Mode m = (Mode)req->getParam("m", true)->value().toInt();
+
+            if (m != settings.mode)
+            {
+                CANRxBuffer::clear();
+                CANTxBuffer::clear();
+
+                settings.mode = m;
+                saveSettings();
+            }
+}
 
         req->send(200, "text/plain", "OK"); });
 

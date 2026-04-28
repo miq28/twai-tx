@@ -1,6 +1,7 @@
 #pragma once
 #include <driver/gpio.h>
 #include "debug.h"
+#include "app_mode.h"
 
 #if defined(SPARKLE_IOT_XH_S3E_N16R8)
 #define CAN_TX GPIO_NUM_7
@@ -59,6 +60,8 @@
 #define CAN_LOG(...)
 #endif
 
+#define SETTINGS_MAGIC   0xC0FFEE42
+#define SETTINGS_VERSION 1
 
 struct Settings
 {
@@ -67,6 +70,9 @@ struct Settings
 #elif defined(WEACT_STUDIO_CAN485_V1)
 #define PREF_NAME "weact_can485" // max 15 characaters
 #endif
+    uint32_t magic;     // sanity check
+    uint16_t version;   // struct version
+
     uint32_t CANBaud;
     uint32_t fdSpeed;
     bool enabled;
@@ -90,6 +96,10 @@ struct Settings
     char AP_PASS[64]; // Null terminated string for the key. Can be a passphase or the actual key
     char STA_SSID[32];    // null terminated string for the SSID
     char STA_PASS[64]; // Null terminated string for the key. Can be a passphase or the actual key
+
+    Mode mode; ;       // <-- ADD (store Mode enum as u8)
+
+    uint32_t crc;       // checksum (last field)
 } __attribute__((__packed__));
 
 extern Settings settings;
@@ -101,3 +111,5 @@ void loadSettings();
 void applyCANConfig(uint32_t baud, bool listenOnly);
 void changeWifiMode(uint8_t mode);
 void changePrefsString(const char * key, const char * str);
+
+void saveSettings();   // <-- ADD

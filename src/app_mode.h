@@ -20,7 +20,6 @@ enum Mode
 struct AppState
 {
     bool running;
-    Mode mode;
     int target_fps;
     int delay_us;
     int locked_id;

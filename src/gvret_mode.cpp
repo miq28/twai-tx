@@ -305,9 +305,9 @@ void processIncomingByte(uint8_t b)
             // enter binary mode (no response required)
             binaryMode = true;
             DEBUG_PRINTLN("Entering binary mode");
-            if (appState.mode != MODE_SAVVYCAN)
+            if (settings.mode != MODE_SAVVYCAN)
             {
-                appState.mode = MODE_SAVVYCAN;
+                settings.mode = MODE_SAVVYCAN;
                 DEBUG_PRINTLN("Mode switched to SAVVYCAN");
             }
             return;
@@ -340,7 +340,7 @@ void processIncomingByte(uint8_t b)
 
 void gvretLoop()
 {
-    if (appState.mode != MODE_SAVVYCAN)
+    if (settings.mode != MODE_SAVVYCAN)
         return;
 
     static uint8_t txBuf[128];

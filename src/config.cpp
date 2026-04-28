@@ -23,6 +23,7 @@
 #include <Preferences.h>
 #include "esp_system.h"
 #include "spi_flash_mmap.h"
+#include "app_mode.h"
 
 void printFlashID()
 {
@@ -94,34 +95,66 @@ void checkESPBoard()
 
 Settings settings;
 
+static uint32_t calcCRC(const Settings &s)
+{
+    const uint8_t *p = (const uint8_t *)&s;
+    size_t len = sizeof(Settings) - sizeof(s.crc);
+
+    uint32_t crc = 0xFFFFFFFF;
+    for (size_t i = 0; i < len; i++)
+    {
+        crc ^= p[i];
+        for (int j = 0; j < 8; j++)
+            crc = (crc >> 1) ^ (0xEDB88320 & -(crc & 1));
+    }
+    return crc;
+}
+
 void loadSettings()
 {
-    // nvs_flash_erase(); // erase the NVS partition and...
-    // nvs_flash_init();  // initialize the NVS partition.
     Preferences prefs;
+    prefs.begin(PREF_NAME, true); // read-only
 
-    // prefs.begin(PREF_NAME, false);
-    // settings.CANBaud = prefs.getUInt("CANBaud", 500000);
-    // settings.listenOnly = prefs.getBool("listenOnly", false);
+    size_t len = prefs.getBytesLength("blob");
 
-    prefs.begin(PREF_NAME, false);
-    // prefs.clear();
-
-    if (!prefs.isKey("CANBaud") || prefs.getUInt("CANBaud") == 0)
+    if (len != sizeof(Settings))
     {
-        prefs.putUInt("CANBaud", 500000);
-    }
-    if (!prefs.isKey("listenOnly"))
-    {
-        prefs.putBool("listenOnly", false);
+        DEBUG("[CFG] No valid blob → defaults\n");
+
+        settings = {};
+        settings.magic = SETTINGS_MAGIC;
+        settings.version = SETTINGS_VERSION;
+        settings.CANBaud = 500000;
+        settings.listenOnly = false;
+        settings.mode = MODE_GENERATOR;
+
+        prefs.end();
+        return;
     }
 
-    settings.CANBaud = prefs.getUInt("CANBaud");
-    DEBUG("CANBaud: %u\n", settings.CANBaud);
-    settings.listenOnly = prefs.getBool("listenOnly");
-    DEBUG("listenOnly: %d\n", settings.listenOnly);
-
+    prefs.getBytes("blob", &settings, sizeof(Settings));
     prefs.end();
+
+    if (settings.magic != SETTINGS_MAGIC ||
+        settings.version != SETTINGS_VERSION ||
+        settings.crc != calcCRC(settings))
+    {
+        DEBUG("[CFG] Corrupt → reset\n");
+
+        settings = {};
+        settings.magic = SETTINGS_MAGIC;
+        settings.version = SETTINGS_VERSION;
+        settings.CANBaud = 500000;
+        settings.listenOnly = false;
+        settings.mode = MODE_GENERATOR;
+
+        return;
+    }
+
+
+
+    DEBUG("[CFG] Loaded mode=%d baud=%lu\n",
+          settings.mode, settings.CANBaud);
 }
 
 void applyCANConfig(uint32_t baud, bool listenOnly)
@@ -138,7 +171,7 @@ void applyCANConfig(uint32_t baud, bool listenOnly)
 
     if (oldBaud == baud && oldListen == listenOnly)
     {
-        DEBUG("Baud and listenOnly unchanged\n");
+        DEBUG("Baud and listenOnly UNCHANGED\n");
 
         DEBUG("[CAN] currentBaud=%lu running=%d state=%s\n",
               CANDriver::getCurrentBaud(),
@@ -177,16 +210,29 @@ void applyCANConfig(uint32_t baud, bool listenOnly)
     settings.CANBaud = baud;
     settings.listenOnly = listenOnly;
 
+    DEBUG("Baud and listenOnly CHANGED\n");
+
+    DEBUG("[CAN] currentBaud=%lu running=%d state=%s\n",
+          CANDriver::getCurrentBaud(),
+          CANDriver::isRunning(),
+          CANDriver::getStateStr());
+
     // Persist
+    saveSettings();
+}
+
+void saveSettings()
+{
+    settings.magic = SETTINGS_MAGIC;
+    settings.version = SETTINGS_VERSION;
+    settings.crc = calcCRC(settings);
+
     Preferences prefs;
     prefs.begin(PREF_NAME, false);
-    prefs.putUInt("CANBaud", baud);
-    prefs.putBool("listenOnly", listenOnly);
-
-    DEBUG("Settings updated, CANBaud: %u\n", baud);
-    DEBUG("Settings updated, listenOnly: %d\n", listenOnly);
-
+    prefs.putBytes("blob", &settings, sizeof(Settings));
     prefs.end();
+
+    DEBUG("[CFG] Saved\n");
 }
 
 void changeWifiMode(uint8_t mode)
