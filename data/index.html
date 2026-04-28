@@ -1,24 +1,115 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="utf-8">
-    <title>CAN Tool</title>
-    <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<title>ESP32 Terminal</title>
+
+<style>
+body {
+    margin: 0;
+    background: #0d0d0d;
+    color: #00ff88;
+    font-family: monospace;
+}
+
+#topbar {
+    background: #111;
+    padding: 8px;
+    border-bottom: 1px solid #333;
+}
+
+#status {
+    color: #0f0;
+    font-weight: bold;
+}
+
+#terminal {
+    height: calc(100vh - 80px);
+    overflow-y: auto;
+    padding: 10px;
+    white-space: pre-wrap;
+}
+
+#inputbar {
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+    background: #111;
+    border-top: 1px solid #333;
+}
+
+#cmd {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    outline: none;
+    background: #000;
+    color: #0f0;
+    font-family: monospace;
+}
+</style>
 </head>
+
 <body>
 
 <div id="topbar">
-    Mode:
-    <select id="modeSelect"></select>
-
-    <span id="status"></span>
+    Mode: <span id="mode">?</span> |
+    Status: <span id="status">Disconnected</span>
 </div>
 
-<!-- dynamic UI goes here -->
-<div id="app"></div>
-<div id="console" style="height:150px; overflow:auto; background:#000; border-top:1px solid #333;"></div>
-<input id="cmd" placeholder="type command..." style="width:100%;">
+<div id="terminal"></div>
 
-<script src="main.js"></script>
+<div id="inputbar">
+    <input id="cmd" placeholder="type command and press Enter">
+</div>
+
+<script>
+let ws;
+const term = document.getElementById("terminal");
+const statusEl = document.getElementById("status");
+
+function connect() {
+    ws = new WebSocket(`ws://${location.host}/ws`);
+
+    ws.onopen = () => {
+        statusEl.textContent = "Connected";
+        statusEl.style.color = "#0f0";
+    };
+
+    ws.onclose = () => {
+        statusEl.textContent = "Disconnected";
+        statusEl.style.color = "#f00";
+        setTimeout(connect, 1000);
+    };
+
+    ws.onmessage = (evt) => {
+        append(evt.data);
+    };
+}
+
+function append(text) {
+    term.textContent += text;
+
+    // limit buffer (prevent slow browser)
+    if (term.textContent.length > 50000) {
+        term.textContent = term.textContent.slice(-30000);
+    }
+
+    term.scrollTop = term.scrollHeight;
+}
+
+document.getElementById("cmd").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+        let v = e.target.value;
+        if (v && ws.readyState === 1) {
+            ws.send(v);
+        }
+        e.target.value = "";
+    }
+});
+
+connect();
+</script>
+
 </body>
 </html>
