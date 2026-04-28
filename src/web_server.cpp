@@ -230,6 +230,17 @@ static String getStatusJson()
     return s;
 }
 
+void wsSendText(const char* data, size_t len)
+{
+    if (ws.count() == 0) return;
+    ws.textAll(data, len);
+}
+
+bool wsHasClient()
+{
+    return ws.count() > 0;
+}
+
 // ===== WS EVENT =====
 static void onWsEvent(AsyncWebSocket *server,
                       AsyncWebSocketClient *client,
@@ -241,6 +252,22 @@ static void onWsEvent(AsyncWebSocket *server,
     if (type == WS_EVT_CONNECT)
     {
         client->text("{\"msg\":\"connected\"}");
+        return;
+    }
+
+    if (type == WS_EVT_DATA)
+    {
+        AwsFrameInfo *info = (AwsFrameInfo *)arg;
+
+        if (info->opcode == WS_TEXT)
+        {
+            // forward EXACTLY like TCP / Serial
+            transportDispatchBuffer(data, len);
+
+            // IMPORTANT: trigger CLI execution
+            uint8_t nl = '\n';
+            transportDispatchBuffer(&nl, 1);
+        }
     }
 }
 
