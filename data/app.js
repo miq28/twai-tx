@@ -105,6 +105,14 @@ function pushFrame(f)
 
 async function handleWSMessage(event)
 {
+    // ===== TEXT (DEBUG / CLI)
+    if (typeof event.data === "string")
+    {
+        handleText(event.data);
+        return;
+    }
+
+    // ===== BINARY (CAN)
     let arrayBuffer;
 
     if (event.data instanceof ArrayBuffer)
@@ -120,41 +128,7 @@ async function handleWSMessage(event)
         return;
     }
 
-    const buf = new DataView(arrayBuffer);
-
-    let offset = 0;
-
-    while (offset + 24 <= buf.byteLength)
-    {
-        const sync = buf.getUint16(offset, true);
-        if (sync !== 0xAA55) { offset++; continue; }
-
-        const ts = buf.getUint32(offset + 3, true);
-        const id = buf.getUint32(offset + 7, true);
-        const dlc = buf.getUint8(offset + 11);
-
-        if (!passFilter(id))
-        {
-            offset += 24;
-            continue;
-        }
-
-        let data = "";
-        for (let i = 0; i < dlc; i++)
-            data += buf.getUint8(offset + 12 + i).toString(16).padStart(2,"0")+" ";
-
-        pushFrame({
-            ts,
-            id,
-            dlc,
-            data: data.trim(),
-            color: idToColor(id)
-        });
-
-        offset += 24;
-        frameCount++;
-        totalFrames++;
-    }
+    parseCAN(arrayBuffer);
 }
 
 function connectWS()
