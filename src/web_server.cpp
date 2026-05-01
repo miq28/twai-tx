@@ -281,6 +281,7 @@ static String getStatusJson()
     s += "\"running\":" + String(appState.running ? "true" : "false") + ",";
     s += "\"listen\":" + String(CANDriver::isListenOnly() ? "true" : "false");
     s += ",\"canlog\":" + String(settings.canLogMask);
+    s += ",\"led\":" + String(settings.ledEnabled ? "true" : "false");
     s += "}";
     return s;
 }
@@ -339,6 +340,22 @@ void webInit()
             setCanLogPreset(preset.c_str());
         }
     });
+    server.on("/led", HTTP_GET, [](AsyncWebServerRequest *req)
+    {
+        if (!req->hasParam("v"))
+        {
+            req->send(400, "text/plain", "Missing v=0/1");
+            return;
+        }
+
+        String val = req->getParam("v")->value();
+        bool en = (val == "1" || val == "on");
+
+        setLedEnabled(en);
+
+        req->send(200, "application/json",
+                String("{\"led\":") + (en ? "true" : "false") + "}");
+    });    
 
     // ===== STATUS =====
     server.on("/status", HTTP_GET, [](AsyncWebServerRequest *req)
@@ -358,7 +375,7 @@ void webInit()
         if (req->hasParam("v", true))
         {
             uint32_t b = req->getParam("v", true)->value().toInt();
-            CANDriver::reinit(b, CANDriver::isListenOnly());
+            setCANConfig(b, CANDriver::isListenOnly());
         }
 
         req->send(200, "text/plain", "OK"); });

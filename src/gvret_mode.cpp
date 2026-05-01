@@ -206,7 +206,7 @@ static void handleSetupCAN(uint8_t b)
 
         if (enable)
         {
-            applyCANConfig(baud, listen);
+            setCANConfig(baud, listen);
         }
         break;
     }

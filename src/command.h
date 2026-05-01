@@ -24,6 +24,7 @@ enum CommandType
     CMD_STATUS,
     CMD_SET_CANLOG,
     CMD_SET_CANLOGPRESET,
+    CMD_SET_LED,
     CMD_RESET,
     CMD_HELP
 };

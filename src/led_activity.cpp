@@ -1,5 +1,6 @@
 #include "led_activity.h"
 #include <Arduino.h>
+#include "config.h"
 
 #if defined(WEACT_STUDIO_CAN485_V1)
 
@@ -51,6 +52,11 @@ void ledSetEnabled(bool en)
     ledEnabled = en;
 }
 
+bool ledIsEnabled()
+{
+    return ledEnabled;
+}
+
 void ledRxEvent() { rxEvents = rxEvents + 1; }
 void ledTxEvent() { txEvents = txEvents + 1; }
 
@@ -76,12 +82,23 @@ void ledTask(void *)
 
     while (1)
     {
+        static bool wasEnabled = true;
+
         if (!ledEnabled)
         {
-            pixel.clear();
-            pixel.show();
-            vTaskDelay(pdMS_TO_TICKS(50)); // sleep longer
+            if (wasEnabled)
+            {
+                pixel.clear();
+                pixel.show(); // run once when disabling
+                wasEnabled = false;
+            }
+
+            vTaskDelay(pdMS_TO_TICKS(200)); // longer sleep
             continue;
+        }
+        else
+        {
+            wasEnabled = true;
         }
 
         uint32_t now = millis();
@@ -214,6 +231,8 @@ void ledTask(void *)
 // ===== INIT =====
 void ledActivityInit()
 {
+    ledSetEnabled(settings.ledEnabled);
+
     xTaskCreatePinnedToCore(
         ledTask,
         "ledTask",

@@ -35,6 +35,7 @@ namespace
         {"mode savvycan", "m4", "savvycan mode"},
         {"status", "", "show status"},
         {"reset", "r", "reset defaults"},
+        {"led on/off", "", "enable or disable RGB LED"},
     };
 
     uint8_t escapeCount = 0;
@@ -43,6 +44,7 @@ namespace
 
     bool parseCommand(char *buf, Command &cmd)
     {
+        // ===== WORD COMMANDS FIRST =====
         if (strcmp(buf, "start") == 0 || strcmp(buf, "s") == 0)
         {
             cmd.type = CMD_START;
@@ -62,28 +64,28 @@ namespace
             return true;
         }
 
-        if (buf[0] == 'b')
+        if (buf[0] == 'b' && isdigit(buf[1]))
         {
             cmd.type = CMD_SET_BAUD;
             cmd.value_u32 = atoi(buf + 1);
             return true;
         }
 
-        if (buf[0] == 'l')
+        if (buf[0] == 'l' && isdigit(buf[1]))
         {
             cmd.type = CMD_SET_LISTEN;
             cmd.value_bool = atoi(buf + 1);
             return true;
         }
 
-        if (buf[0] == 'd')
+        if (buf[0] == 'd' && isdigit(buf[1]))
         {
             cmd.type = CMD_SET_DELAY;
             cmd.value_int = atoi(buf + 1);
             return true;
         }
 
-        if (buf[0] == 'i')
+        if (buf[0] == 'i' && isdigit(buf[1]))
         {
             cmd.type = CMD_LOCK_ID;
             int value = atoi(&buf[1]);
@@ -229,7 +231,7 @@ namespace
             return true;
         }
 
-        if (buf[0] == 'r')
+        if (buf[0] == 'r' && buf[1] == 'r')
         {
             cmd.type = CMD_RESET;
             return true;
@@ -246,6 +248,13 @@ namespace
         {
             cmd.type = CMD_SET_CANLOGPRESET;
             strcpy(cmd.str, buf + 13);
+            return true;
+        }
+
+        if (strncmp(buf, "led ", 4) == 0)
+        {
+            cmd.type = CMD_SET_LED;
+            cmd.value_bool = (strcmp(buf + 4, "on") == 0 || strcmp(buf + 4, "1") == 0);
             return true;
         }
 
@@ -285,7 +294,7 @@ namespace
             break;
         }
         case CMD_SET_BAUD:
-            applyCANConfig(cmd.value_u32, CANDriver::isListenOnly());
+            setCANConfig(cmd.value_u32, CANDriver::isListenOnly());
             break;
         case CMD_SET_FPS:
             appState.target_fps = cmd.value_int;
@@ -297,7 +306,7 @@ namespace
             appState.locked_id = cmd.value_int;
             break;
         case CMD_SET_LISTEN:
-            applyCANConfig(CANDriver::getCurrentBaud(), cmd.value_bool);
+            setCANConfig(CANDriver::getCurrentBaud(), cmd.value_bool);
             break;
         case CMD_STATUS:
             DEBUG("Mode:%d Baud:%lu, Running:%s listen-only:%s FPS:%d\n",
@@ -352,7 +361,7 @@ namespace
             }
             break;
         case CMD_SET_WIFIMODE:
-            changeWifiMode(cmd.value_u8);
+            setWifiMode(cmd.value_u8);
             break;
         case CMD_SET_AP_SSID:
             changePrefsString("AP_SSID", cmd.str);
@@ -399,6 +408,9 @@ namespace
         case CMD_SET_CANLOGPRESET:
             setCanLogPreset(cmd.str);
             DEBUG("[CANLOG] preset '%s' applied, mask: %lu\n", cmd.str, settings.canLogMask);
+            break;
+        case CMD_SET_LED:
+            setLedEnabled(cmd.value_bool);
             break;
         default:
             DEBUG_PRINTLN("COMMAND VALID BUT HANDLE NOT AVAILABLE! check source code'");

@@ -69,6 +69,7 @@ struct Settings
     uint32_t CANBaud;
     bool listenOnly;
     volatile uint32_t canLogMask;
+    bool ledEnabled;   // persist LED state
     uint32_t fdSpeed;
     bool enabled;
     bool fdMode;
@@ -99,7 +100,8 @@ void checkESPBoard();
 
 void loadSettings();
 
-void applyCANConfig(uint32_t baud, bool listenOnly);
-void changeWifiMode(uint8_t mode);
+void setCANConfig(uint32_t baud, bool listenOnly);
+void setWifiMode(uint8_t mode);
 void changePrefsString(const char *key, const char *str);
 void setCANLogMask(uint32_t mask);
+void setLedEnabled(bool en);

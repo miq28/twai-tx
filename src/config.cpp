@@ -20,6 +20,7 @@
 #include "config.h"
 #include "can_bus.h"
 #include "debug.h"
+#include "led_activity.h"
 #include <Preferences.h>
 #include "esp_system.h"
 #include "spi_flash_mmap.h"
@@ -120,6 +121,10 @@ void loadSettings()
         prefs.putUInt("canLogMask",
                       CAN_ALERT_CRITICAL | CAN_ALERT_OPERATIONAL);
     }
+    if (!prefs.isKey("ledEnabled"))
+    {
+        prefs.putBool("ledEnabled", true); // default ON
+    }
 
     settings.CANBaud = prefs.getUInt("CANBaud");
     DEBUG("CANBaud: %u\n", settings.CANBaud);
@@ -127,47 +132,47 @@ void loadSettings()
     DEBUG("listenOnly: %d\n", settings.listenOnly);
     settings.canLogMask = prefs.getUInt("canLogMask");
     DEBUG("canLogMask: %u\n", settings.canLogMask);
+    settings.ledEnabled = prefs.getBool("ledEnabled");
+    DEBUG("ledEnabled: %d\n", settings.ledEnabled);
 
     prefs.end();
 }
 
-void applyCANConfig(uint32_t baud, bool listenOnly)
+void setCANConfig(uint32_t baud, bool listenOnly)
 {
-    uint32_t oldBaud = CANDriver::getCurrentBaud();
-    bool oldListen = CANDriver::isListenOnly();
-
-    if (oldBaud == baud && oldListen == listenOnly)
-    {
-        DEBUG("Baud and listenOnly unchanged\n");
+    if (settings.CANBaud == baud &&
+        settings.listenOnly == listenOnly)
         return;
-    }
 
-    // Update runtime copy
     settings.CANBaud = baud;
     settings.listenOnly = listenOnly;
 
-    // Persist
     Preferences prefs;
     prefs.begin(PREF_NAME, false);
     prefs.putUInt("CANBaud", baud);
     prefs.putBool("listenOnly", listenOnly);
-    DEBUG("Settings updated, CANBaud: %u\n", prefs.getUInt("CANBaud"));
-    DEBUG("Settings updated, listenOnly: %d\n", prefs.getBool("listenOnly"));
     prefs.end();
 
-    // Apply to driver
+    DEBUG("[CAN CFG] baud:%lu listen:%d\n", baud, listenOnly);
+
     CANDriver::reinit(baud, listenOnly);
 }
 
-void changeWifiMode(uint8_t mode)
+void setWifiMode(uint8_t mode)
 {
-    DEBUG("Wifi mode changed to %d, rebooting esp...\n", mode);
-    // Persist
+    if (settings.wifiMode == mode)
+        return;
+
+    settings.wifiMode = mode;
+
     Preferences prefs;
     prefs.begin(PREF_NAME, false);
     prefs.putUChar("wifiMode", mode);
     prefs.end();
-    ESP.restart();
+
+    DEBUG("[WIFI] mode set to %u (rebooting)\n", mode);
+
+    ESP.restart();   // required to re-init stack cleanly
 }
 
 void setCANLogMask(uint32_t mask)
@@ -193,4 +198,23 @@ void changePrefsString(const char *key, const char *str)
     prefs.putString(key, str);
     DEBUG("%s settings updated to: %s\n", key, prefs.getString(key));
     prefs.end();
+}
+
+void setLedEnabled(bool en)
+{
+    if (settings.ledEnabled == en)
+        return;
+
+    settings.ledEnabled = en;
+
+    // Persist
+    Preferences prefs;
+    prefs.begin(PREF_NAME, false);
+    prefs.putBool("ledEnabled", en);
+    prefs.end();
+
+    // Apply immediately
+    ledSetEnabled(en);
+
+    DEBUG("[LED] %s (persisted)\n", en ? "ON" : "OFF");
 }
