@@ -10,21 +10,23 @@
 
 static Adafruit_NeoPixel pixel(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
-// ===== CONFIG =====
-static const uint32_t PULSE_MS    = 20;
-static const uint32_t PEAK_MS     = 40;
+static volatile bool ledEnabled = true;
 
-static const float DECAY          = 0.90f;
-static const float SCALE          = 0.02f;
+// ===== CONFIG =====
+static const uint32_t PULSE_MS = 20;
+static const uint32_t PEAK_MS = 40;
+
+static const float DECAY = 0.90f;
+static const float SCALE = 0.02f;
 
 static const uint16_t PEAK_THRESHOLD = 50;
 
 // WiFi
 static const uint32_t WIFI_PERIOD_MS = 1000;
-static const uint32_t WIFI_FLASH_MS  = 25;
+static const uint32_t WIFI_FLASH_MS = 25;
 
 // LED refresh
-static const uint32_t LED_TASK_MS = 10;
+static const uint32_t LED_TASK_MS = 20;
 
 // ===== STATE =====
 static volatile uint16_t rxEvents = 0;
@@ -44,6 +46,11 @@ static uint32_t wifiNextFlash = 0;
 static uint32_t wifiFlashUntil = 0;
 
 // ===== API =====
+void ledSetEnabled(bool en)
+{
+    ledEnabled = en;
+}
+
 void ledRxEvent() { rxEvents = rxEvents + 1; }
 void ledTxEvent() { txEvents = txEvents + 1; }
 
@@ -69,6 +76,14 @@ void ledTask(void *)
 
     while (1)
     {
+        if (!ledEnabled)
+        {
+            pixel.clear();
+            pixel.show();
+            vTaskDelay(pdMS_TO_TICKS(50)); // sleep longer
+            continue;
+        }
+
         uint32_t now = millis();
 
         // =========================================================
@@ -140,8 +155,10 @@ void ledTask(void *)
         rxLevel = rxLevel * DECAY + rx;
         txLevel = txLevel * DECAY + tx;
 
-        if (rx > 0) rxUntil = now + PULSE_MS;
-        if (tx > 0) txUntil = now + PULSE_MS;
+        if (rx > 0)
+            rxUntil = now + PULSE_MS;
+        if (tx > 0)
+            txUntil = now + PULSE_MS;
 
         if ((rx + tx) > PEAK_THRESHOLD)
         {
@@ -150,11 +167,12 @@ void ledTask(void *)
 
         bool rxActive = now < rxUntil;
         bool txActive = now < txUntil;
-        bool peak     = now < peakUntil;
+        bool peak = now < peakUntil;
 
         float level = rxLevel + txLevel;
         float brightness = level * SCALE;
-        if (brightness > 1.0f) brightness = 1.0f;
+        if (brightness > 1.0f)
+            brightness = 1.0f;
 
         uint8_t base = (uint8_t)(brightness * 80);
 
@@ -203,8 +221,7 @@ void ledActivityInit()
         NULL,
         1,
         NULL,
-        0
-    );
+        1);
 }
 
 #else

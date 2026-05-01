@@ -12,3 +12,5 @@ void ledTxEvent();
 void ledSetCANHealth(CANHealthState state);
 
 void ledWifiConnected(bool connected);
+
+void ledSetEnabled(bool en);
