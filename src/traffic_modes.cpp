@@ -21,6 +21,24 @@ namespace
     uint64_t last1000ms = 0;
     uint16_t rpm = 800;
     uint16_t speed = 0;
+
+    uint32_t getGeneratorIdBase()
+    {
+        static bool initialized = false;
+        static uint32_t base = 0;
+
+        if (!initialized)
+        {
+            uint64_t mac = ESP.getEfuseMac();
+            uint32_t hash = (uint32_t)mac ^ (uint32_t)(mac >> 24) ^ (uint32_t)(mac >> 40);
+            uint32_t slot = hash % 96;
+
+            base = 0x100 + (slot * 0x10);
+            initialized = true;
+        }
+
+        return base;
+    }
 }
 
 void generatorLoop()
@@ -62,7 +80,10 @@ void generatorLoop()
     msg.rtr = 0;
     msg.data_length_code = 8;
 
-    uint32_t id = appState.locked_id >= 0 ? appState.locked_id : currentId;
+    uint32_t id = appState.locked_id >= 0
+        ? appState.locked_id
+        : getGeneratorIdBase() + currentId;
+
     if (canFrameCfg.extended)
         id |= 0x100;
     msg.identifier = id;
