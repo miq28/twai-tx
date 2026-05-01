@@ -945,7 +945,7 @@ namespace CANTxBuffer
 
         if (next == txTail)
         {
-            tx_drop++;
+            tx_drop += 1;
             return false;
         }
 

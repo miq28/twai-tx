@@ -250,5 +250,6 @@ void ledRxEvent() {}
 void ledTxEvent() {}
 void ledSetCANHealth(CANHealthState) {}
 void ledWifiConnected(bool) {}
+void ledSetEnabled(bool) {};
 
 #endif
