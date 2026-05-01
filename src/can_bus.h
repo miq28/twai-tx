@@ -83,6 +83,7 @@ namespace CANTxBuffer
     void startTask();
     void stopTask();
     bool push(const twai_message_t &msg);
+    bool hasSpace();
 
     uint32_t getTxOk();
     uint32_t getTxFail();

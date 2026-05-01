@@ -930,6 +930,12 @@ namespace CANTxBuffer
     static uint32_t rate_block = 0;
 
     // ===== PUSH =====
+    bool hasSpace()
+    {
+        uint16_t next = (txHead + 1) % TX_BUF_SIZE;
+        return next != txTail;
+    }
+
     bool push(const twai_message_t &msg)
     {
         // count attempt at API level
@@ -941,14 +947,13 @@ namespace CANTxBuffer
             return false;
         }
 
-        uint16_t next = (txHead + 1) % TX_BUF_SIZE;
-
-        if (next == txTail)
+        if (!hasSpace())
         {
             tx_drop += 1;
             return false;
         }
 
+        uint16_t next = (txHead + 1) % TX_BUF_SIZE;
         txBuffer[txHead].msg = msg;
         txHead = next;
         return true;

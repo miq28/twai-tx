@@ -11,6 +11,7 @@ namespace
     uint8_t currentId = 0;
     uint32_t counter = 0;
     uint64_t lastFrameUs = 0;
+    uint64_t nextTxTryUs = 0;
     uint64_t lastSlowUs = 0;
     uint32_t frameCount = 0;
     uint64_t lastFpsUs = 0;
@@ -29,6 +30,9 @@ void generatorLoop()
 
     uint64_t now = esp_timer_get_time();
 
+    if (now < nextTxTryUs)
+        return;
+
     if (appState.mode == MODE_SLOW)
     {
         if (now - lastSlowUs < 3000000ULL)
@@ -45,6 +49,12 @@ void generatorLoop()
         uint32_t interval = 1000000ULL / appState.target_fps;
         if (now - lastFrameUs < interval)
             return;
+    }
+
+    if (!CANTxBuffer::hasSpace())
+    {
+        nextTxTryUs = now + 100;
+        return;
     }
 
     twai_message_t msg = {};
@@ -70,6 +80,7 @@ void generatorLoop()
 
     if (CANTxBuffer::push(msg))
     {
+        nextTxTryUs = 0;
         counter++;
         lastFrameUs = now;
 
