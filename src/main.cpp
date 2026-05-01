@@ -10,6 +10,7 @@
 #include "config.h"
 #include "web_server.h"
 #include "led_activity.h"
+#include "net_manager.h"
 #include <WiFi.h>
 
 const char *resetReasonToStr(esp_reset_reason_t r)
@@ -127,7 +128,7 @@ void setup()
 
 void loop()
 {
-    debug_to_serial = !(appState.mode == MODE_SAVVYCAN);
+    debug_to_serial = (appState.mode != MODE_SAVVYCAN) || netClientConnected();
 
     transportProcess();
 
