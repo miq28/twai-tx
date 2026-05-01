@@ -89,7 +89,7 @@ namespace CANDriver
             listenOnly ? TWAI_MODE_LISTEN_ONLY : TWAI_MODE_NORMAL);
 
         general.tx_queue_len = 32;
-        general.rx_queue_len = 64;
+        general.rx_queue_len = 256;
 
         general.alerts_enabled = TWAI_ALERT_ALL;
 
@@ -346,10 +346,27 @@ namespace CANRxBuffer
             updateRates();
 
             // ---- RECEIVE ONLY (critical path) ----
-            if (twai_receive(&msg, pdMS_TO_TICKS(10)) == ESP_OK)
+            // Drain ALL available frames (non-blocking)
+            int burst = 0;
+            bool received = false;
+
+            while (twai_receive(&msg, 0) == ESP_OK)
             {
+                received = true;
+
                 (void)push(msg, micros());
                 ledRxEvent();
+
+                if (++burst >= 32)
+                {
+                    burst = 0;
+                    taskYIELD();
+                }
+            }
+
+            if (!received)
+            {
+                vTaskDelay(1); // sleep when no traffic
             }
         }
 
@@ -401,7 +418,7 @@ namespace CANRxBuffer
             NULL,
             16,
             &rxTaskHandle,
-            1);
+            0);
     }
 
     // ===== STOP (SAFE) =====
@@ -860,7 +877,7 @@ namespace CANEvents
             NULL,
             10,
             &evtTaskHandle, // <-- important
-            1);
+            0);
     }
 
     void stopTask()
@@ -916,11 +933,11 @@ namespace CANTxBuffer
     bool push(const twai_message_t &msg)
     {
         // count attempt at API level
-        tx_attempt++;
+        tx_attempt += 1;
 
         if (CANDriver::isListenOnly())
         {
-            tx_block++;
+            tx_block += 1;
             return false;
         }
 
@@ -988,18 +1005,21 @@ namespace CANTxBuffer
             // safety guard (should rarely trigger if push() is correct)
             if (CANDriver::isListenOnly())
             {
-                tx_block++;
+                tx_block += 1;
                 continue;
             }
 
+            // yield occasionally to avoid starving RX
+            taskYIELD();
+
             if (twai_transmit(&msg, pdMS_TO_TICKS(2)) == ESP_OK)
             {
-                tx_ok++;
+                tx_ok += 1;
                 ledTxEvent();
             }
             else
             {
-                tx_fail++;
+                tx_fail += 1;
             }
 
             updateRates();
@@ -1024,7 +1044,7 @@ namespace CANTxBuffer
             NULL,
             15,
             &txTaskHandle,
-            1); // same core as RX is fine
+            0); // same core as RX is fine
     }
 
     // ===== STOP =====
