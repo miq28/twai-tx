@@ -159,7 +159,7 @@ void loop()
     // ===== TX handing
     transportFlush();
 
-    stats();
+    // stats();
     // ledActivityUpdate();
     // ledWifiConnected(WiFi.status() == WL_CONNECTED);
 }

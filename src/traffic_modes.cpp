@@ -57,6 +57,8 @@ void generatorLoop()
         id |= 0x100;
     msg.identifier = id;
 
+    static uint32_t counter = 0;
+
     msg.data[0] = (counter >> 0) & 0xFF;
     msg.data[1] = (counter >> 8) & 0xFF;
     msg.data[2] = (counter >> 16) & 0xFF;
@@ -66,29 +68,13 @@ void generatorLoop()
     msg.data[6] = 0x66;
     msg.data[7] = 0x77;
 
-    // if (CANDriver::send(msg))
     if (CANTxBuffer::push(msg))
     {
-        ledTxEvent(); // 🔥 ONLY on success
         counter++;
-        frameCount++;
         lastFrameUs = now;
 
         if (appState.locked_id < 0)
             currentId = (currentId + 1) % 10;
-    }
-
-    if (now - lastFpsUs >= 1000000ULL)
-    {
-        lastFpsUs = now;
-        // DEBUG("FPS: %lu\n", frameCount);
-
-        DEBUG("TX_OK:%lu FAIL:%lu DROP:%lu\n",
-              CANTxBuffer::getTxOk(),
-              CANTxBuffer::getTxFail(),
-              CANTxBuffer::getTxDrop());
-
-        frameCount = 0;
     }
 }
 

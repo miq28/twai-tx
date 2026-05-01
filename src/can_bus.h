@@ -48,6 +48,12 @@ namespace CANRxBuffer
     uint32_t getTotalFrames();
     uint16_t getMaxUsage();
     void resetStats();
+
+    void updateRates();
+    uint32_t getRateRx();
+    uint32_t getRateDrop();
+    uint16_t getUsage();
+    uint16_t getCapacity();
 }
 
 
@@ -82,4 +88,10 @@ namespace CANTxBuffer
     uint32_t getTxFail();
     uint32_t getTxDrop();
     void resetStats();
+
+    uint32_t getRateAttempt();
+    uint32_t getRateOk();
+    uint32_t getRateFail();
+    uint32_t getRateDrop();
+    uint32_t getRateBlock();
 }

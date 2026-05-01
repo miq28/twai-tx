@@ -302,6 +302,15 @@ namespace CANRxBuffer
     static uint32_t lastFpsTime = 0;
     static uint32_t rxFps = 0;
 
+    // ===== RATE TRACKING =====
+    static uint32_t lastRateTime = 0;
+
+    static uint32_t last_total = 0;
+    static uint32_t last_drop = 0;
+
+    static uint32_t rate_rx = 0;
+    static uint32_t rate_drop = 0;
+
     // ===== PUSH =====
     bool push(const twai_message_t &msg, uint32_t ts)
     {
@@ -334,6 +343,8 @@ namespace CANRxBuffer
 
         while (rxRunning)
         {
+            updateRates();
+
             // ---- RECEIVE ONLY (critical path) ----
             if (twai_receive(&msg, pdMS_TO_TICKS(10)) == ESP_OK)
             {
@@ -442,8 +453,36 @@ namespace CANRxBuffer
         totalFrames = 0;
         maxUsage = 0;
     }
-}
 
+    void updateRates()
+    {
+        uint32_t now = millis();
+
+        if (now - lastRateTime >= 1000)
+        {
+            rate_rx = totalFrames - last_total;
+            rate_drop = dropCount - last_drop;
+
+            last_total = totalFrames;
+            last_drop = dropCount;
+
+            lastRateTime = now;
+        }
+    }
+
+    uint32_t getRateRx() { return rate_rx; }
+    uint32_t getRateDrop() { return rate_drop; }
+
+    uint16_t getUsage()
+    {
+        return (rxHead - rxTail + RX_BUF_SIZE) % RX_BUF_SIZE;
+    }
+
+    uint16_t getCapacity()
+    {
+        return RX_BUF_SIZE;
+    }
+}
 
 // Helper: check if a category is enabled
 static inline bool catEnabled(uint32_t cat)
@@ -479,7 +518,7 @@ void setCanLogPreset(const char *name)
     else if (!strcmp(name, "silent"))
         mask = 0;
 
-    setCANLogMask(mask);  // ← IMPORTANT (persist + apply)
+    setCANLogMask(mask); // ← IMPORTANT (persist + apply)
 }
 
 static const struct
@@ -743,10 +782,55 @@ namespace CANEvents
         // LOG (throttled)
         // -------------------------
         static uint32_t lastPrint = 0;
+        static uint32_t lastTec = 0;
+        static uint32_t lastRec = 0;
+
         if (now - lastPrint > 200)
         {
             lastPrint = now;
-            CANDriver::logStatus(st);
+
+            // log only when error appears OR changes
+            if ((st.tec != lastTec || st.rec != lastRec))
+            {
+                if (st.tec > 0 || st.rec > 0)
+                {
+                    CANDriver::logStatus(st);
+                }
+                else if (lastTec > 0 || lastRec > 0)
+                {
+                    CAN_LOG("[CAN] RECOVERED (TEC=0 REC=0)\n");
+                }
+
+                lastTec = st.tec;
+                lastRec = st.rec;
+            }
+        }
+
+        // -------------------------
+        // SYSTEM RATE (1s)
+        // -------------------------
+        static uint32_t lastRatePrint = 0;
+
+        if (now - lastRatePrint > 1000)
+        {
+            lastRatePrint = now;
+
+            uint16_t used = CANRxBuffer::getUsage();
+            uint16_t cap = CANRxBuffer::getCapacity();
+
+            uint32_t usage_pct = (used * 100UL) / cap;
+            uint32_t max_pct = (CANRxBuffer::getMaxUsage() * 100UL) / cap;
+
+            DEBUG("[CAN] RX:%lu/s drop:%lu/s buf:%u%% max:%u%% | TX a:%lu ok:%lu f:%lu d:%lu b:%lu\n",
+                  CANRxBuffer::getRateRx(),
+                  CANRxBuffer::getRateDrop(),
+                  usage_pct,
+                  max_pct,
+                  CANTxBuffer::getRateAttempt(),
+                  CANTxBuffer::getRateOk(),
+                  CANTxBuffer::getRateFail(),
+                  CANTxBuffer::getRateDrop(),
+                  CANTxBuffer::getRateBlock());
         }
     }
 
@@ -807,18 +891,44 @@ namespace CANTxBuffer
     static volatile uint16_t txHead = 0;
     static volatile uint16_t txTail = 0;
 
+    static volatile uint32_t tx_attempt = 0;
     static volatile uint32_t tx_ok = 0;
     static volatile uint32_t tx_fail = 0;
     static volatile uint32_t tx_drop = 0;
+    static volatile uint32_t tx_block = 0;
+
+    // rate state
+    static uint32_t lastRateTime = 0;
+
+    static uint32_t last_attempt = 0;
+    static uint32_t last_ok = 0;
+    static uint32_t last_fail = 0;
+    static uint32_t last_drop = 0;
+    static uint32_t last_block = 0;
+
+    static uint32_t rate_attempt = 0;
+    static uint32_t rate_ok = 0;
+    static uint32_t rate_fail = 0;
+    static uint32_t rate_drop = 0;
+    static uint32_t rate_block = 0;
 
     // ===== PUSH =====
     bool push(const twai_message_t &msg)
     {
+        // count attempt at API level
+        tx_attempt++;
+
+        if (CANDriver::isListenOnly())
+        {
+            tx_block++;
+            return false;
+        }
+
         uint16_t next = (txHead + 1) % TX_BUF_SIZE;
 
         if (next == txTail)
         {
-            tx_drop = tx_drop + 1; // buffer full → drop (no blocking)
+            tx_drop++;
             return false;
         }
 
@@ -838,6 +948,29 @@ namespace CANTxBuffer
         return true;
     }
 
+    // ===== Rate Update =====
+    void updateRates()
+    {
+        uint32_t now = millis();
+
+        if (now - lastRateTime >= 1000) // 1 second window
+        {
+            rate_attempt = tx_attempt - last_attempt;
+            rate_ok = tx_ok - last_ok;
+            rate_fail = tx_fail - last_fail;
+            rate_drop = tx_drop - last_drop;
+            rate_block = tx_block - last_block;
+
+            last_attempt = tx_attempt;
+            last_ok = tx_ok;
+            last_fail = tx_fail;
+            last_drop = tx_drop;
+            last_block = tx_block;
+
+            lastRateTime = now;
+        }
+    }
+
     // ===== TASK =====
     void task(void *)
     {
@@ -852,17 +985,24 @@ namespace CANTxBuffer
                 continue;
             }
 
-            // small blocking wait → prevents retry storm
+            // safety guard (should rarely trigger if push() is correct)
+            if (CANDriver::isListenOnly())
+            {
+                tx_block++;
+                continue;
+            }
+
             if (twai_transmit(&msg, pdMS_TO_TICKS(2)) == ESP_OK)
             {
-                tx_ok = tx_ok + 1;
+                tx_ok++;
                 ledTxEvent();
             }
             else
             {
-                tx_fail = tx_fail + 1;
-                // no immediate retry
+                tx_fail++;
             }
+
+            updateRates();
         }
 
         txTaskHandle = nullptr;
@@ -898,14 +1038,24 @@ namespace CANTxBuffer
     }
 
     // ===== STATS =====
+    uint32_t getTxAttempt() { return tx_attempt; }
     uint32_t getTxOk() { return tx_ok; }
     uint32_t getTxFail() { return tx_fail; }
     uint32_t getTxDrop() { return tx_drop; }
+    uint32_t getTxBlock() { return tx_block; }
+
+    uint32_t getRateAttempt() { return rate_attempt; }
+    uint32_t getRateOk() { return rate_ok; }
+    uint32_t getRateFail() { return rate_fail; }
+    uint32_t getRateDrop() { return rate_drop; }
+    uint32_t getRateBlock() { return rate_block; }
 
     void resetStats()
     {
+        tx_attempt = 0;
         tx_ok = 0;
         tx_fail = 0;
         tx_drop = 0;
+        tx_block = 0;
     }
 }
