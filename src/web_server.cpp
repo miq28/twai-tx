@@ -8,6 +8,7 @@
 #include "debug.h"
 #include "net_manager.h"
 #include "transport.h"
+#include "config.h"
 
 // =======================================================
 // ================= FILE API (MERGED)
@@ -163,6 +164,60 @@ static void handleDelete(AsyncWebServerRequest *req)
     req->send(200, "text/plain", "OK");
 }
 
+// set CAN log mask, return current mask and enabled categories as JSON
+static void handleCanLog(AsyncWebServerRequest *req)
+{
+    bool changed = false;
+    String mode = "none";
+
+    // ===== PRESET =====
+    if (req->hasParam("preset"))
+    {
+        String preset = req->getParam("preset")->value();
+        preset.toLowerCase();
+
+        if (preset == "prod" || preset == "debug" ||
+            preset == "verbose" || preset == "silent")
+        {
+            setCanLogPreset(preset.c_str());
+            mode = "preset";
+            changed = true;
+        }
+        else
+        {
+            req->send(400, "application/json",
+                      "{\"error\":\"invalid preset\"}");
+            return;
+        }
+    }
+
+    // ===== CUSTOM SET =====
+    else if (req->hasParam("set"))
+    {
+        String arg = req->getParam("set")->value();
+        arg.toLowerCase();
+
+        if (arg == "all")
+            setCANLogMask(0xFFFFFFFF);
+        else if (arg == "none")
+            setCANLogMask(0);
+        else
+            setCANLogMask(parseCategories(arg));
+
+        mode = "custom";
+        changed = true;
+    }
+
+    // ===== RESPONSE =====
+    String resp = "{";
+    resp += "\"mode\":\"" + mode + "\",";
+    resp += "\"mask\":" + String(settings.canLogMask) + ",";
+    resp += "\"categories\":\"" + categoriesToString(settings.canLogMask) + "\"";
+    resp += "}";
+
+    req->send(200, "application/json", resp);
+}
+
 // ===== RENAME =====
 static void handleRename(AsyncWebServerRequest *req)
 {
@@ -225,6 +280,7 @@ static String getStatusJson()
     s += "\"baud\":" + String(CANDriver::getCurrentBaud()) + ",";
     s += "\"running\":" + String(appState.running ? "true" : "false") + ",";
     s += "\"listen\":" + String(CANDriver::isListenOnly() ? "true" : "false");
+    s += ",\"canlog\":" + String(settings.canLogMask);
     s += "}";
     return s;
 }
@@ -269,6 +325,20 @@ void webInit()
     server.on("/save", HTTP_POST, [](AsyncWebServerRequest *req) {}, NULL, handleSave);
     server.on("/delete", HTTP_POST, handleDelete);
     server.on("/rename", HTTP_POST, handleRename);
+    server.on("/canlog", HTTP_GET, handleCanLog);
+    server.on("/canlog", HTTP_POST, [](AsyncWebServerRequest *req){},
+        NULL,
+        [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t, size_t)
+    {
+        String body = String((char*)data).substring(0, len);
+
+        if (body.indexOf("preset=") >= 0)
+        {
+            String preset = body.substring(body.indexOf("=") + 1);
+            preset.trim();
+            setCanLogPreset(preset.c_str());
+        }
+    });
 
     // ===== STATUS =====
     server.on("/status", HTTP_GET, [](AsyncWebServerRequest *req)

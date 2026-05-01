@@ -235,6 +235,20 @@ namespace
             return true;
         }
 
+        if (strncmp(buf, "canlog ", 7) == 0)
+        {
+            cmd.type = CMD_SET_CANLOG;
+            strcpy(cmd.str, buf + 7);
+            return true;
+        }
+
+        if (strncmp(buf, "canlogpreset ", 13) == 0)
+        {
+            cmd.type = CMD_SET_CANLOGPRESET;
+            strcpy(cmd.str, buf + 13);
+            return true;
+        }
+
         return false;
     }
 
@@ -358,6 +372,33 @@ namespace
         case CMD_RESET:
             initAppState();
             DEBUG_PRINTLN("*** STATES RESET - states only ***");
+            break;
+        case CMD_SET_CANLOG:
+        {
+            String arg = cmd.str;
+            arg.toLowerCase();
+
+            if (arg == "all")
+            {
+                setCANLogMask(0xFFFFFFFF);
+            }
+            else if (arg == "none")
+            {
+                setCANLogMask(0);
+            }
+            else
+            {
+                setCANLogMask(parseCategories(arg));
+            }
+
+            DEBUG("[CANLOG] %s (%lu)\n",
+                  categoriesToString(settings.canLogMask).c_str(),
+                  settings.canLogMask);
+            break;
+        }
+        case CMD_SET_CANLOGPRESET:
+            setCanLogPreset(cmd.str);
+            DEBUG("[CANLOG] preset '%s' applied, mask: %lu\n", cmd.str, settings.canLogMask);
             break;
         default:
             DEBUG_PRINTLN("COMMAND VALID BUT HANDLE NOT AVAILABLE! check source code'");

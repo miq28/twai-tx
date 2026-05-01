@@ -115,11 +115,18 @@ void loadSettings()
     {
         prefs.putBool("listenOnly", false);
     }
+    if (!prefs.isKey("canLogMask"))
+    {
+        prefs.putUInt("canLogMask",
+                      CAN_ALERT_CRITICAL | CAN_ALERT_OPERATIONAL);
+    }
 
     settings.CANBaud = prefs.getUInt("CANBaud");
     DEBUG("CANBaud: %u\n", settings.CANBaud);
     settings.listenOnly = prefs.getBool("listenOnly");
     DEBUG("listenOnly: %d\n", settings.listenOnly);
+    settings.canLogMask = prefs.getUInt("canLogMask");
+    DEBUG("canLogMask: %u\n", settings.canLogMask);
 
     prefs.end();
 }
@@ -145,7 +152,7 @@ void applyCANConfig(uint32_t baud, bool listenOnly)
     prefs.putUInt("CANBaud", baud);
     prefs.putBool("listenOnly", listenOnly);
     DEBUG("Settings updated, CANBaud: %u\n", prefs.getUInt("CANBaud"));
-    DEBUG("Settings updated, listenOnly: %d\n", prefs.getBool("listenOnly"));   
+    DEBUG("Settings updated, listenOnly: %d\n", prefs.getBool("listenOnly"));
     prefs.end();
 
     // Apply to driver
@@ -163,7 +170,22 @@ void changeWifiMode(uint8_t mode)
     ESP.restart();
 }
 
-void changePrefsString(const char * key, const char * str)
+void setCANLogMask(uint32_t mask)
+{
+    if (settings.canLogMask == mask)
+        return;
+
+    settings.canLogMask = mask;
+
+    Preferences prefs;
+    prefs.begin(PREF_NAME, false);
+    prefs.putUInt("canLogMask", mask);
+    prefs.end();
+
+    DEBUG("[CANLOG] updated: %lu\n", mask);
+}
+
+void changePrefsString(const char *key, const char *str)
 {
     // Persist
     Preferences prefs;

@@ -185,25 +185,6 @@ namespace CANDriver
         return currentListenOnly;
     }
 
-    void handleRecovery(const CANStatus &s)
-    {
-        static bool recoveryActive = false;
-
-        // Step 2: wait until recovery finished
-        if (recoveryActive && s.state == TWAI_STATE_STOPPED)
-        {
-            CAN_LOG("[CAN] Recovery complete → restart\n");
-            twai_start();
-            recoveryActive = false;
-        }
-
-        // Step 3: clear flag when running again (safety)
-        if (s.state == TWAI_STATE_RUNNING)
-        {
-            recoveryActive = false;
-        }
-    }
-
     CANHealthState currentHealth = CAN_HEALTH_OK;
 
     CANHealthState getCANHealth()
@@ -463,10 +444,255 @@ namespace CANRxBuffer
     }
 }
 
-// namespace
-// {
-//     CANHealthState currentHealth = CAN_HEALTH_OK;
-// }
+
+// Helper: check if a category is enabled
+static inline bool catEnabled(uint32_t cat)
+{
+    return (settings.canLogMask & cat) != 0;
+}
+
+// Rate limiter
+static inline bool logEvery(uint32_t &last, uint32_t interval_ms)
+{
+    uint32_t now = millis();
+    if (now - last >= interval_ms)
+    {
+        last = now;
+        return true;
+    }
+    return false;
+}
+
+void setCanLogPreset(const char *name)
+{
+    uint32_t mask = settings.canLogMask;
+
+    if (!strcmp(name, "prod"))
+        mask = CAN_ALERT_CRITICAL | CAN_ALERT_OPERATIONAL;
+
+    else if (!strcmp(name, "debug"))
+        mask = CAN_ALERT_CRITICAL | CAN_ALERT_OPERATIONAL | CAN_ALERT_INFO;
+
+    else if (!strcmp(name, "verbose"))
+        mask = 0xFFFFFFFF;
+
+    else if (!strcmp(name, "silent"))
+        mask = 0;
+
+    setCANLogMask(mask);  // ← IMPORTANT (persist + apply)
+}
+
+static const struct
+{
+    const char *name;
+    uint32_t bit;
+} kCatMap[] = {
+    {"critical", CAN_ALERT_CRITICAL},
+    {"operational", CAN_ALERT_OPERATIONAL},
+    {"info", CAN_ALERT_INFO},
+    {"rare", CAN_ALERT_RARE},
+};
+
+uint32_t parseCategories(const String &csv)
+{
+    uint32_t mask = 0;
+    int start = 0;
+    while (start >= 0)
+    {
+        int comma = csv.indexOf(',', start);
+        String tok = (comma < 0) ? csv.substring(start) : csv.substring(start, comma);
+        tok.trim();
+        tok.toLowerCase();
+
+        for (auto &e : kCatMap)
+        {
+            if (tok == e.name)
+            {
+                mask |= e.bit;
+                break;
+            }
+        }
+
+        if (comma < 0)
+            break;
+        start = comma + 1;
+    }
+    return mask;
+}
+
+String categoriesToString(uint32_t mask)
+{
+    String out;
+    for (auto &e : kCatMap)
+    {
+        if (mask & e.bit)
+        {
+            if (out.length())
+                out += ",";
+            out += e.name;
+        }
+    }
+    if (!out.length())
+        out = "none";
+    return out;
+}
+
+// ACTION layer (no logging here)
+static void handleAlertAction(uint32_t bit)
+{
+    switch (bit)
+    {
+    case TWAI_ALERT_BUS_OFF:
+        if (twai_initiate_recovery() == ESP_OK)
+        {
+            CANDriver::recoveryActive = true;
+        }
+        break;
+
+    case TWAI_ALERT_BUS_RECOVERED:
+        twai_start(); // required for legacy driver
+        CANDriver::recoveryActive = false;
+        break;
+
+    // health-relevant (no immediate action, but you may hook counters here)
+    case TWAI_ALERT_ERR_PASS:
+    case TWAI_ALERT_ABOVE_ERR_WARN:
+    case TWAI_ALERT_BELOW_ERR_WARN:
+    case TWAI_ALERT_ERR_ACTIVE:
+    case TWAI_ALERT_RECOVERY_IN_PROGRESS:
+        break;
+
+    // operational signals (optional hooks)
+    case TWAI_ALERT_TX_FAILED:
+    case TWAI_ALERT_RX_QUEUE_FULL:
+    case TWAI_ALERT_RX_FIFO_OVERRUN:
+        break;
+
+    // informational / rare → no action
+    case TWAI_ALERT_TX_IDLE:
+    case TWAI_ALERT_TX_SUCCESS:
+    case TWAI_ALERT_RX_DATA:
+    case TWAI_ALERT_ARB_LOST:
+    case TWAI_ALERT_BUS_ERROR:
+    case TWAI_ALERT_TX_RETRIED:
+    case TWAI_ALERT_PERIPH_RESET:
+    default:
+        break;
+    }
+}
+
+// LOG layer (category-filtered + throttled)
+static void handleAlertLog(uint32_t bit)
+{
+    // throttles for noisy alerts
+    static uint32_t t_bus_err = 0;
+    static uint32_t t_arb = 0;
+    static uint32_t t_tx_succ = 0;
+
+    switch (bit)
+    {
+    // =========================
+    // 🔴 CRITICAL
+    // =========================
+    case TWAI_ALERT_BUS_OFF:
+        if (catEnabled(CAN_ALERT_CRITICAL))
+            CAN_LOG("[CAN EVT] BUS OFF → start recovery\n");
+        break;
+
+    case TWAI_ALERT_BUS_RECOVERED:
+        if (catEnabled(CAN_ALERT_CRITICAL))
+            CAN_LOG("[CAN EVT] BUS RECOVERED\n");
+        break;
+
+    case TWAI_ALERT_ERR_PASS:
+        if (catEnabled(CAN_ALERT_CRITICAL))
+            CAN_LOG("[CAN EVT] ERROR PASSIVE\n");
+        break;
+
+    case TWAI_ALERT_ABOVE_ERR_WARN:
+        if (catEnabled(CAN_ALERT_CRITICAL))
+            CAN_LOG("[CAN EVT] ABOVE ERROR WARNING\n");
+        break;
+
+    // =========================
+    // 🟠 OPERATIONAL
+    // =========================
+    case TWAI_ALERT_TX_FAILED:
+        if (catEnabled(CAN_ALERT_OPERATIONAL))
+            CAN_LOG("[CAN EVT] TX FAILED\n");
+        break;
+
+    case TWAI_ALERT_RX_QUEUE_FULL:
+        if (catEnabled(CAN_ALERT_OPERATIONAL))
+            CAN_LOG("[CAN EVT] RX QUEUE FULL\n");
+        break;
+
+    case TWAI_ALERT_RX_FIFO_OVERRUN:
+        if (catEnabled(CAN_ALERT_OPERATIONAL))
+            CAN_LOG("[CAN EVT] RX FIFO OVERRUN\n");
+        break;
+
+    case TWAI_ALERT_BELOW_ERR_WARN:
+        if (catEnabled(CAN_ALERT_OPERATIONAL))
+            CAN_LOG("[CAN EVT] BELOW ERROR WARNING\n");
+        break;
+
+    case TWAI_ALERT_ERR_ACTIVE:
+        if (catEnabled(CAN_ALERT_OPERATIONAL))
+            CAN_LOG("[CAN EVT] ERROR ACTIVE\n");
+        break;
+
+    case TWAI_ALERT_RECOVERY_IN_PROGRESS:
+        if (catEnabled(CAN_ALERT_OPERATIONAL))
+            CAN_LOG("[CAN EVT] RECOVERY IN PROGRESS\n");
+        break;
+
+    // =========================
+    // 🔵 INFO (noisy)
+    // =========================
+    case TWAI_ALERT_TX_IDLE:
+        if (catEnabled(CAN_ALERT_INFO))
+            CAN_LOG("[CAN EVT] TX IDLE\n");
+        break;
+
+    case TWAI_ALERT_TX_SUCCESS:
+        if (catEnabled(CAN_ALERT_INFO) && logEvery(t_tx_succ, 200))
+            CAN_LOG("[CAN EVT] TX SUCCESS\n");
+        break;
+
+    case TWAI_ALERT_ARB_LOST:
+        if (catEnabled(CAN_ALERT_INFO) && logEvery(t_arb, 200))
+            CAN_LOG("[CAN EVT] ARBITRATION LOST\n");
+        break;
+
+    case TWAI_ALERT_BUS_ERROR:
+        if (catEnabled(CAN_ALERT_INFO) && logEvery(t_bus_err, 200))
+            CAN_LOG("[CAN EVT] BUS ERROR\n");
+        break;
+
+    case TWAI_ALERT_RX_DATA:
+        // intentionally ignored (RX handled elsewhere)
+        break;
+
+    // =========================
+    // 🟣 RARE
+    // =========================
+    case TWAI_ALERT_TX_RETRIED:
+        if (catEnabled(CAN_ALERT_RARE))
+            CAN_LOG("[CAN EVT] TX RETRIED (ERRATA)\n");
+        break;
+
+    case TWAI_ALERT_PERIPH_RESET:
+        if (catEnabled(CAN_ALERT_RARE))
+            CAN_LOG("[CAN EVT] PERIPHERAL RESET\n");
+        break;
+
+    default:
+        if (catEnabled(CAN_ALERT_RARE))
+            CAN_LOG("[CAN EVT] UNKNOWN: 0x%08lX\n", bit);
+        break;
+    }
+}
 
 namespace CANEvents
 {
@@ -485,18 +711,18 @@ namespace CANEvents
         uint32_t alerts;
         if (twai_read_alerts(&alerts, 0) == ESP_OK && alerts)
         {
-            if (alerts & TWAI_ALERT_BUS_OFF)
-            {
-                CAN_LOG("[CAN EVT] BUS OFF → start recovery\n");
-                if (twai_initiate_recovery() == ESP_OK)
-                {
-                    // mark active via static inside handleRecovery
-                }
-            }
+            uint32_t pending = alerts;
 
-            if (alerts & TWAI_ALERT_ERR_PASS)
+            while (pending)
             {
-                CAN_LOG("[CAN EVT] ERROR PASSIVE\n");
+                uint32_t bit = pending & -pending;
+                pending &= ~bit;
+
+                // 1) ALWAYS execute behavior
+                handleAlertAction(bit);
+
+                // 2) OPTIONAL logging
+                handleAlertLog(bit);
             }
         }
 
@@ -506,11 +732,6 @@ namespace CANEvents
         CANDriver::CANStatus st;
         if (!CANDriver::getStatus(st))
             return;
-
-        // -------------------------
-        // RECOVERY (state-based)
-        // -------------------------
-        CANDriver::handleRecovery(st);
 
         // -------------------------
         // LED (health)
@@ -683,6 +904,8 @@ namespace CANTxBuffer
 
     void resetStats()
     {
-        tx_ok = tx_fail = tx_drop = 0;
+        tx_ok = 0;
+        tx_fail = 0;
+        tx_drop = 0;
     }
 }

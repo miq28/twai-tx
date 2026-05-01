@@ -22,6 +22,8 @@ enum CommandType
     CMD_SET_STA_PASS,
     CMD_RESTART,
     CMD_STATUS,
+    CMD_SET_CANLOG,
+    CMD_SET_CANLOGPRESET,
     CMD_RESET,
     CMD_HELP
 };

@@ -1,4 +1,5 @@
 #pragma once
+#include <Arduino.h>
 #include <driver/twai.h>
 
 struct CANRxItem
@@ -48,6 +49,21 @@ namespace CANRxBuffer
     uint16_t getMaxUsage();
     void resetStats();
 }
+
+
+
+// ===== CAN LOG CONTROL =====
+enum CANAlertCategory : uint32_t
+{
+    CAN_ALERT_CRITICAL     = 1 << 0,
+    CAN_ALERT_OPERATIONAL  = 1 << 1,
+    CAN_ALERT_INFO         = 1 << 2,
+    CAN_ALERT_RARE         = 1 << 3,
+};
+
+uint32_t parseCategories(const String &csv);
+String   categoriesToString(uint32_t mask);
+void setCanLogPreset(const char *name);
 
 namespace CANEvents
 {

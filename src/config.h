@@ -59,7 +59,6 @@
 #define CAN_LOG(...)
 #endif
 
-
 struct Settings
 {
 #if defined(WAVESHARE_ESP32_S3_RS485_CAN)
@@ -68,9 +67,10 @@ struct Settings
 #define PREF_NAME "weact_can485" // max 15 characaters
 #endif
     uint32_t CANBaud;
+    bool listenOnly;
+    volatile uint32_t canLogMask;
     uint32_t fdSpeed;
     bool enabled;
-    bool listenOnly;
     bool fdMode;
 
     bool useBinarySerialComm; // use a binary protocol on the serial link or human readable format?
@@ -85,11 +85,12 @@ struct Settings
     bool enableLawicel;
 
     // if we're using WiFi then output to serial is disabled (it's far too slow to keep up)
-    uint8_t wifiMode; // 0 = don't use wifi, 1 = connect to an AP, 2 = Create an AP
-    char AP_SSID[32];    // null terminated string for the SSID
-    char AP_PASS[64]; // Null terminated string for the key. Can be a passphase or the actual key
-    char STA_SSID[32];    // null terminated string for the SSID
+    uint8_t wifiMode;  // 0 = don't use wifi, 1 = connect to an AP, 2 = Create an AP
+    char AP_SSID[32];  // null terminated string for the SSID
+    char AP_PASS[64];  // Null terminated string for the key. Can be a passphase or the actual key
+    char STA_SSID[32]; // null terminated string for the SSID
     char STA_PASS[64]; // Null terminated string for the key. Can be a passphase or the actual key
+
 } __attribute__((__packed__));
 
 extern Settings settings;
@@ -100,4 +101,5 @@ void loadSettings();
 
 void applyCANConfig(uint32_t baud, bool listenOnly);
 void changeWifiMode(uint8_t mode);
-void changePrefsString(const char * key, const char * str);
+void changePrefsString(const char *key, const char *str);
+void setCANLogMask(uint32_t mask);
