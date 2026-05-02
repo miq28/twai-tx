@@ -5,6 +5,7 @@
 #include "debug.h"
 #include "transport.h"
 #include "config.h"
+#include "tx_pipe.h"
 
 static bool binaryMode = false;
 static twai_message_t txMsg;
@@ -130,7 +131,7 @@ static void handleCommand(uint8_t cmd)
             (uint8_t)(now >> 16),
             (uint8_t)(now >> 24)};
 
-        transportWrite(resp, sizeof(resp));
+        TxPipe::push(resp, sizeof(resp));
         state = IDLE;
         break;
     }
@@ -163,7 +164,7 @@ static void handleCommand(uint8_t cmd)
             12,
             1 // number of CAN buses (you have 1)
         };
-        transportWrite(resp, sizeof(resp));
+        TxPipe::push(resp, sizeof(resp));
         state = IDLE;
         break;
     }
@@ -226,7 +227,7 @@ static void handleSetupCAN(uint8_t b)
         for (int i = 0; i < 15; i++)
             resp[2 + i] = 0;
 
-        transportWrite(resp, sizeof(resp));
+        TxPipe::push(resp, sizeof(resp));
 
         state = IDLE;
         break;
@@ -350,7 +351,7 @@ void gvretLoop()
     if (CANDriver::isRunning())
     {
         CANRxItem item;
-        int limit = 50;
+        int limit = 12;
 
         while (limit-- && CANRxBuffer::pop(item))
         {
@@ -385,7 +386,7 @@ void gvretLoop()
             // 🔥 BATCH APPEND
             if (txLen + idx > sizeof(txBuf))
             {
-                transportWrite(txBuf, txLen);
+                TxPipe::push(txBuf, txLen);
                 txLen = 0;
             }
 
@@ -397,7 +398,7 @@ void gvretLoop()
     // 🔥 FLUSH (timeout 5ms)
     if (txLen > 0 && (millis() - lastFlush > 1))
     {
-        transportWrite(txBuf, txLen);
+        TxPipe::push(txBuf, txLen);
         txLen = 0;
         lastFlush = millis();
     }

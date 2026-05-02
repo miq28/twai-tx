@@ -10,6 +10,7 @@
 #include "net_manager.h"
 #include "transport.h"
 #include "config.h"
+#include "tx_pipe.h"
 
 // =======================================================
 // ================= FILE API (MERGED)
@@ -18,7 +19,7 @@
 static File uploadFile;
 
 // ===== STREAM BUFFER (SHARED TCP + WS) =====
-static uint8_t streamBuf[4096]; // bigger = better batching
+static uint8_t streamBuf[256]; // bigger = better batching
 static size_t streamLen = 0;
 static uint32_t streamLastFlush = 0;
 
@@ -555,8 +556,9 @@ void streamPush(const uint8_t *data, size_t len)
     {
         if (streamLen > 0)
         {
-            transportWrite(streamBuf, streamLen);
-            ws.binaryAll(streamBuf, streamLen);
+            // transportWrite(streamBuf, streamLen);
+            TxPipe::push(streamBuf, streamLen);
+            // ws.binaryAll(streamBuf, streamLen);
             streamLen = 0;
         }
     }

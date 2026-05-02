@@ -12,6 +12,8 @@
 #include "led_activity.h"
 #include "net_manager.h"
 #include <WiFi.h>
+#include "tx_pipe.h"
+#include "can_bus.h"
 
 const char *resetReasonToStr(esp_reset_reason_t r)
 {
@@ -85,6 +87,27 @@ void stats()
     }
 }
 
+static TaskHandle_t debugTaskHandle = nullptr;
+
+void debugTask(void *)
+{
+    while (1)
+    {
+        TaskHandle_t rx  = CANRxBuffer::getTaskHandle();
+        TaskHandle_t tx  = CANTxBuffer::getTaskHandle();
+        TaskHandle_t evt = CANEvents::getTaskHandle();
+        TaskHandle_t tx_pipe = TxPipe::getTaskHandle();
+
+        CAN_LOG("RX:%u TX:%u EVT:%u TX_PIPE:%u\n",
+            rx  ? uxTaskGetStackHighWaterMark(rx)  : 0,
+            tx  ? uxTaskGetStackHighWaterMark(tx)  : 0,
+            evt ? uxTaskGetStackHighWaterMark(evt) : 0,
+            tx_pipe ? uxTaskGetStackHighWaterMark(tx_pipe) : 0);
+
+        vTaskDelay(pdMS_TO_TICKS(3000));
+    }
+}
+
 void setup()
 {
     Serial.begin(1000000);
@@ -99,6 +122,7 @@ void setup()
     checkESPBoard();
     loadSettings();
 
+    TxPipe::init();
     transportInit();
     initAppState();
     CANDriver::init(settings.CANBaud, settings.listenOnly);
@@ -106,6 +130,18 @@ void setup()
     analyzerInit();
     webInit();
     ledActivityInit();
+
+     // start debug LAST
+    xTaskCreatePinnedToCore(
+        debugTask,
+        "debug",
+        4096,
+        NULL,
+        1,              // low priority
+        &debugTaskHandle,
+        1               // optional: opposite core from CAN tasks
+    );   
+
     DEBUG("Free heap after setup: %u\n", ESP.getFreeHeap());
     debug_to_serial = false;
 }

@@ -54,6 +54,8 @@ namespace CANRxBuffer
     uint32_t getRateDrop();
     uint16_t getUsage();
     uint16_t getCapacity();
+
+    TaskHandle_t getTaskHandle();
 }
 
 
@@ -76,6 +78,8 @@ namespace CANEvents
     void startTask();
     void stopTask();
     void process();
+
+    TaskHandle_t getTaskHandle();
 }
 
 namespace CANTxBuffer
@@ -95,4 +99,6 @@ namespace CANTxBuffer
     uint32_t getRateFail();
     uint32_t getRateDrop();
     uint32_t getRateBlock();
+
+    TaskHandle_t getTaskHandle();
 }

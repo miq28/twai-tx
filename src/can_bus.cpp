@@ -1062,3 +1062,17 @@ namespace CANTxBuffer
         tx_block = 0;
     }
 }
+
+
+TaskHandle_t CANRxBuffer::getTaskHandle()
+{
+    return rxTaskHandle;
+}
+TaskHandle_t CANTxBuffer::getTaskHandle()
+{
+    return txTaskHandle;
+}
+TaskHandle_t CANEvents::getTaskHandle()
+{
+    return evtTaskHandle;
+}

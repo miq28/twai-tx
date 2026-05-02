@@ -30,7 +30,7 @@ static inline void debug_write_all(const char *text)
     DEBUGPORT.print(text);
     if (debug_to_serial)
         Serial.print(text);
-    webDebugWrite(text);
+    // webDebugWrite(text);
 }
 
 static inline void debug_printf_impl(const char *fmt, ...)
