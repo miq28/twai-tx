@@ -6,6 +6,7 @@
 #include "app_mode.h"
 #include "can_bus.h"
 #include "debug.h"
+#include "command.h"
 #include "net_manager.h"
 #include "transport.h"
 #include "config.h"
@@ -253,6 +254,14 @@ static void handleRename(AsyncWebServerRequest *req)
 
 static AsyncWebServer server(80);
 static AsyncWebSocket ws("/ws");
+static AsyncWebSocket terminalWs("/terminal");
+
+constexpr uint8_t DEBUG_HISTORY_LINES = 24;
+constexpr size_t DEBUG_HISTORY_LEN = 160;
+
+static char debugHistory[DEBUG_HISTORY_LINES][DEBUG_HISTORY_LEN];
+static uint8_t debugHistoryHead = 0;
+static uint8_t debugHistoryCount = 0;
 
 // ===== RING BUFFER =====
 #define WEB_BUF_SIZE 256
@@ -305,6 +314,34 @@ static String getStatusJson()
     return s;
 }
 
+void webDebugWrite(const char *text)
+{
+    if (!text)
+        return;
+
+    snprintf(debugHistory[debugHistoryHead], DEBUG_HISTORY_LEN, "%s", text);
+    debugHistoryHead = (debugHistoryHead + 1) % DEBUG_HISTORY_LINES;
+    if (debugHistoryCount < DEBUG_HISTORY_LINES)
+        debugHistoryCount++;
+
+    if (terminalWs.count() > 0)
+        terminalWs.textAll(text);
+}
+
+static void sendTerminalHistory(AsyncWebSocketClient *client)
+{
+    if (!client)
+        return;
+
+    uint8_t start = (debugHistoryHead + DEBUG_HISTORY_LINES - debugHistoryCount) % DEBUG_HISTORY_LINES;
+
+    for (uint8_t i = 0; i < debugHistoryCount; i++)
+    {
+        uint8_t idx = (start + i) % DEBUG_HISTORY_LINES;
+        client->text(debugHistory[idx]);
+    }
+}
+
 // ===== WS EVENT =====
 static void onWsEvent(AsyncWebSocket *server,
                       AsyncWebSocketClient *client,
@@ -317,6 +354,39 @@ static void onWsEvent(AsyncWebSocket *server,
     {
         client->text("{\"msg\":\"connected\"}");
     }
+}
+
+static void onTerminalEvent(AsyncWebSocket *server,
+                            AsyncWebSocketClient *client,
+                            AwsEventType type,
+                            void *arg,
+                            uint8_t *data,
+                            size_t len)
+{
+    if (type == WS_EVT_CONNECT)
+    {
+        client->text("[terminal connected]\n");
+        sendTerminalHistory(client);
+        return;
+    }
+
+    if (type != WS_EVT_DATA)
+        return;
+
+    AwsFrameInfo *info = (AwsFrameInfo *)arg;
+    if (!info || !info->final || info->index != 0 || info->len != len || info->opcode != WS_TEXT)
+        return;
+
+    bool hasNewline = false;
+    for (size_t i = 0; i < len; i++)
+    {
+        if (data[i] == '\n' || data[i] == '\r')
+            hasNewline = true;
+        cliProcessByte(data[i]);
+    }
+
+    if (!hasNewline)
+        cliProcessByte('\n');
 }
 
 // =======================================================
@@ -457,6 +527,9 @@ void webInit()
     // ===== WS =====
     ws.onEvent(onWsEvent);
     server.addHandler(&ws);
+
+    terminalWs.onEvent(onTerminalEvent);
+    server.addHandler(&terminalWs);
 
     server.begin();
 

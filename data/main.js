@@ -7,10 +7,18 @@ const modeBadge = document.getElementById("modeBadge");
 const deviceLine = document.getElementById("deviceLine");
 const chart = document.getElementById("rateChart");
 const ctx = chart.getContext("2d");
+const terminalState = document.getElementById("terminalState");
+const terminalOutput = document.getElementById("terminalOutput");
+const terminalForm = document.getElementById("terminalForm");
+const terminalInput = document.getElementById("terminalInput");
+const terminalClear = document.getElementById("terminalClear");
 
 let currentModule = null;
 let currentMode = null;
 let samples = [];
+let terminalWs = null;
+let commandHistory = [];
+let historyIndex = 0;
 
 const MODES = [
     { id: 0, name: "Generator", file: "generator.js" },
@@ -146,6 +154,34 @@ function drawChart() {
     drawLine(samples, "#ff6b6b", max, "drop");
 }
 
+function appendTerminal(text) {
+    terminalOutput.textContent += text;
+
+    if (terminalOutput.textContent.length > 20000) {
+        terminalOutput.textContent = terminalOutput.textContent.slice(-16000);
+    }
+
+    terminalOutput.scrollTop = terminalOutput.scrollHeight;
+}
+
+function setTerminalState(text, tone) {
+    terminalState.textContent = text;
+    terminalState.className = `pill ${tone}`;
+}
+
+function connectTerminal() {
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    terminalWs = new WebSocket(`${proto}://${location.host}/terminal`);
+
+    terminalWs.onopen = () => setTerminalState("Live", "good");
+    terminalWs.onclose = () => {
+        setTerminalState("Offline", "bad");
+        setTimeout(connectTerminal, 1500);
+    };
+    terminalWs.onerror = () => setTerminalState("Error", "bad");
+    terminalWs.onmessage = event => appendTerminal(String(event.data));
+}
+
 async function refresh(forceModeLoad = false) {
     try {
         const res = await fetch("/status", { cache: "no-store" });
@@ -167,6 +203,38 @@ async function refresh(forceModeLoad = false) {
 
 modeSelect.onchange = () => setMode(Number(modeSelect.value));
 
+terminalForm.onsubmit = event => {
+    event.preventDefault();
+
+    const command = terminalInput.value.trim();
+    if (!command || terminalWs?.readyState !== WebSocket.OPEN) return;
+
+    appendTerminal(`> ${command}\n`);
+    terminalWs.send(`${command}\n`);
+
+    commandHistory.push(command);
+    if (commandHistory.length > 40) commandHistory.shift();
+    historyIndex = commandHistory.length;
+    terminalInput.value = "";
+};
+
+terminalInput.onkeydown = event => {
+    if (event.key === "ArrowUp" && commandHistory.length) {
+        event.preventDefault();
+        historyIndex = Math.max(0, historyIndex - 1);
+        terminalInput.value = commandHistory[historyIndex] || "";
+    } else if (event.key === "ArrowDown" && commandHistory.length) {
+        event.preventDefault();
+        historyIndex = Math.min(commandHistory.length, historyIndex + 1);
+        terminalInput.value = commandHistory[historyIndex] || "";
+    }
+};
+
+terminalClear.onclick = () => {
+    terminalOutput.textContent = "";
+};
+
 populateModes();
+connectTerminal();
 refresh(true);
 setInterval(refresh, 1000);

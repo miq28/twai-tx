@@ -1,6 +1,8 @@
 #pragma once
 #include "rs485.h"
 #include <Arduino.h>
+#include <stdarg.h>
+#include <stdio.h>
 
 // ===== CONFIG =====
 #define DEBUGPORT RS485
@@ -10,6 +12,8 @@
 
 // ===== RUNTIME CONTROL =====
 inline bool debug_to_serial;   // kontrol Serial output
+
+void webDebugWrite(const char *text);
 
 // ===== DELTA TIMESTAMP =====
 static inline uint32_t dbg_delta_us()
@@ -21,31 +25,41 @@ static inline uint32_t dbg_delta_us()
     return delta;
 }
 
-// ===== MAIN LOG (RS485 + optional Serial) =====
-#define DEBUG(fmt, ...) \
-    do { \
-        uint32_t _t = dbg_delta_us(); \
-        DEBUGPORT.printf("+%lu|" fmt, _t, ##__VA_ARGS__); \
-        if (debug_to_serial) \
-            Serial.printf("+%lu|" fmt, _t, ##__VA_ARGS__); \
-    } while (0)
+static inline void debug_write_all(const char *text)
+{
+    DEBUGPORT.print(text);
+    if (debug_to_serial)
+        Serial.print(text);
+    webDebugWrite(text);
+}
+
+static inline void debug_printf_impl(const char *fmt, ...)
+{
+    char body[256];
+    char line[320];
+
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(body, sizeof(body), fmt, args);
+    va_end(args);
+
+    snprintf(line, sizeof(line), "+%lu|%s", dbg_delta_us(), body);
+    debug_write_all(line);
+}
+
+static inline void debug_print_impl(const char *text, bool newline)
+{
+    char line[320];
+    snprintf(line, sizeof(line), "+%lu|%s%s", dbg_delta_us(), text, newline ? "\n" : "");
+    debug_write_all(line);
+}
+
+// ===== MAIN LOG (RS485 + optional Serial + web terminal) =====
+#define DEBUG(fmt, ...) debug_printf_impl(fmt, ##__VA_ARGS__)
 
 // ===== HELPERS =====
-#define DEBUG_PRINT(s) \
-    do { \
-        uint32_t _t = dbg_delta_us(); \
-        DEBUGPORT.printf("+%lu|%s", _t, (s)); \
-        if (debug_to_serial) \
-            Serial.printf("+%lu|%s", _t, (s)); \
-    } while (0)
-
-#define DEBUG_PRINTLN(s) \
-    do { \
-        uint32_t _t = dbg_delta_us(); \
-        DEBUGPORT.printf("+%lu|%s\n", _t, (s)); \
-        if (debug_to_serial) \
-            Serial.printf("+%lu|%s\n", _t, (s)); \
-    } while (0)
+#define DEBUG_PRINT(s) debug_print_impl((s), false)
+#define DEBUG_PRINTLN(s) debug_print_impl((s), true)
 
 #else
 

@@ -54,50 +54,34 @@ const char *resetReasonToStr(esp_reset_reason_t r)
 
 void stats()
 {
-    static uint32_t lastDrops = 0;
-    static uint32_t lastFrames = 0;
-    static uint32_t lastPrint = 0;
+    static uint32_t lastRatePrint = 0;
+    uint32_t now = millis();
 
-    static uint32_t accumOverwrite = 0;
-
-    uint32_t nowDrops = CANRxBuffer::getDropCount();
-    uint32_t deltaDrops = nowDrops - lastDrops;
-
-    // 🔥 selalu update baseline
-    lastDrops = nowDrops;
-
-    // akumulasi overwrite
-    if (deltaDrops > 0)
+    if (now - lastRatePrint > 1000)
     {
-        accumOverwrite += deltaDrops;
-    }
+        lastRatePrint = now;
 
-    if (millis() - lastPrint >= 1000)
-    {
-        lastPrint = millis();
+        uint16_t used = CANRxBuffer::getUsage();
+        uint16_t cap = CANRxBuffer::getCapacity();
 
-        uint32_t frames = CANRxBuffer::getTotalFrames();
-        uint16_t maxBuf = CANRxBuffer::getMaxUsage();
-        uint16_t curBuf = CANRxBuffer::count();
+        uint32_t usage_pct = (used * 100UL) / cap;
+        uint32_t max_pct = (CANRxBuffer::getMaxUsage() * 100UL) / cap;
 
-        uint32_t deltaFrames = frames - lastFrames;
-        lastFrames = frames;
+        float heap_kb = esp_get_free_heap_size() / 1024.0f;
+        float min_kb = heap_caps_get_minimum_free_size(MALLOC_CAP_DEFAULT) / 1024.0f;
 
-        if (deltaFrames > 0 || accumOverwrite > 0)
-        {
-            float overwriteRate = (deltaFrames > 0)
-                ? (100.0f * accumOverwrite / deltaFrames)
-                : 0.0f;
-
-            DEBUG("CAN: fps=%lu overwrite=%lu (%.2f%%) buf=%u max=%u\n",
-                  deltaFrames,
-                  accumOverwrite,
-                  overwriteRate,
-                  curBuf,
-                  maxBuf);
-
-            accumOverwrite = 0;
-        }
+        DEBUG("[CAN] RX:%lu/s drop:%lu/s buf:%u%% max:%u%% | TX a:%lu ok:%lu f:%lu d:%lu b:%lu h:%.1fkB (min:%.1fkB)\n",
+              CANRxBuffer::getRateRx(),
+              CANRxBuffer::getRateDrop(),
+              usage_pct,
+              max_pct,
+              CANTxBuffer::getRateAttempt(),
+              CANTxBuffer::getRateOk(),
+              CANTxBuffer::getRateFail(),
+              CANTxBuffer::getRateDrop(),
+              CANTxBuffer::getRateBlock(),
+              heap_kb,
+              min_kb);
     }
 }
 
@@ -154,13 +138,13 @@ void loop()
         break;
     }
 
-        // 🔥 ADD HERE
+    // 🔥 ADD HERE
     streamFlush();
 
     // ===== TX handing
     transportFlush();
 
-    // stats();
+    stats();
     // ledActivityUpdate();
     // ledWifiConnected(WiFi.status() == WL_CONNECTED);
 }

@@ -826,29 +826,7 @@ namespace CANEvents
         // -------------------------
         // SYSTEM RATE (1s)
         // -------------------------
-        static uint32_t lastRatePrint = 0;
-
-        if (now - lastRatePrint > 1000)
-        {
-            lastRatePrint = now;
-
-            uint16_t used = CANRxBuffer::getUsage();
-            uint16_t cap = CANRxBuffer::getCapacity();
-
-            uint32_t usage_pct = (used * 100UL) / cap;
-            uint32_t max_pct = (CANRxBuffer::getMaxUsage() * 100UL) / cap;
-
-            DEBUG("[CAN] RX:%lu/s drop:%lu/s buf:%u%% max:%u%% | TX a:%lu ok:%lu f:%lu d:%lu b:%lu\n",
-                  CANRxBuffer::getRateRx(),
-                  CANRxBuffer::getRateDrop(),
-                  usage_pct,
-                  max_pct,
-                  CANTxBuffer::getRateAttempt(),
-                  CANTxBuffer::getRateOk(),
-                  CANTxBuffer::getRateFail(),
-                  CANTxBuffer::getRateDrop(),
-                  CANTxBuffer::getRateBlock());
-        }
+        // moved to main loop()
     }
 
     void canEventTask(void *)

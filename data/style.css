@@ -138,6 +138,10 @@ small {
     min-height: 330px;
 }
 
+.terminal-panel {
+    grid-column: 1 / -1;
+}
+
 .metric-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(150px, 1fr));
@@ -250,6 +254,31 @@ small {
     padding: 14px;
 }
 
+#terminalOutput {
+    height: 260px;
+    margin: 0;
+    padding: 12px 14px;
+    overflow: auto;
+    border-bottom: 1px solid var(--line);
+    background: #080d12;
+    color: #c9f4d8;
+    font: 12px/1.45 ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+    white-space: pre-wrap;
+}
+
+.terminal-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px;
+    padding: 10px;
+}
+
+.terminal-form input {
+    width: 100%;
+    padding: 0 10px;
+    font-family: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+}
+
 .mode-summary {
     display: grid;
     gap: 10px;
@@ -337,7 +366,8 @@ small {
 
     .layout,
     .metric-grid,
-    .control-grid {
+    .control-grid,
+    .terminal-form {
         grid-template-columns: 1fr;
     }
 }

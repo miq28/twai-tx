@@ -46,6 +46,19 @@
             </div>
             <div id="app"></div>
         </section>
+
+        <section class="panel terminal-panel">
+            <div class="panel-title">
+                <h2>Debug Terminal</h2>
+                <span id="terminalState" class="pill warn">Connecting</span>
+            </div>
+            <pre id="terminalOutput"></pre>
+            <form id="terminalForm" class="terminal-form">
+                <input id="terminalInput" autocomplete="off" spellcheck="false" placeholder="help">
+                <button type="submit">Send</button>
+                <button id="terminalClear" type="button">Clear</button>
+            </form>
+        </section>
     </main>
 
     <script type="module" src="main.js"></script>
