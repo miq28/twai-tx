@@ -1,46 +1,41 @@
+let rootEl;
 let ws;
-let fps = 0;
-let last = performance.now();
+let frames = 0;
 
-export function init(root) {
-    root.innerHTML = `
-        <h3>Analyzer</h3>
-        <div id="stats">FPS: 0</div>
-        <canvas id="canvas"></canvas>
-    `;
-
-    const canvas = document.getElementById("canvas");
-    const ctx = canvas.getContext("2d");
-
-    function resize() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight - 100;
-    }
-    resize();
-    window.onresize = resize;
+export function init(root, status) {
+    rootEl = root;
+    frames = 0;
+    render(status);
 
     ws = new WebSocket(`ws://${location.host}/ws`);
     ws.binaryType = "arraybuffer";
-
-    ws.onmessage = () => {
-        fps++;
+    ws.onmessage = event => {
+        if (event.data instanceof ArrayBuffer) frames++;
+        update(status);
     };
+}
 
-    function loop() {
-        const now = performance.now();
-
-        if (now - last > 1000) {
-            document.getElementById("stats").textContent =
-                `FPS: ${fps}`;
-            fps = 0;
-            last = now;
-        }
-
-        requestAnimationFrame(loop);
-    }
-    loop();
+export function update(status = {}) {
+    if (!rootEl) return;
+    render(status);
 }
 
 export function cleanup() {
     if (ws) ws.close();
+    ws = null;
+    rootEl = null;
+}
+
+function render(status = {}) {
+    if (!rootEl) return;
+
+    rootEl.innerHTML = `
+        <h3>Analyzer</h3>
+        <div class="mode-summary">
+            <div class="kv"><span>WebSocket frames</span><strong>${frames}</strong></div>
+            <div class="kv"><span>RX rate</span><strong>${status.rxRate || 0}/s</strong></div>
+            <div class="kv"><span>RX drops</span><strong>${status.rxDropRate || 0}/s</strong></div>
+            <div class="kv"><span>RX buffer</span><strong>${status.rxUsage || 0}/${status.rxCapacity || 0}</strong></div>
+        </div>
+    `;
 }

@@ -1,22 +1,53 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>CAN Tool</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CAN Console</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <header class="app-header">
+        <div>
+            <h1>CAN Console</h1>
+            <p id="deviceLine">Connecting...</p>
+        </div>
+        <div class="header-actions">
+            <select id="modeSelect" aria-label="Mode"></select>
+            <a class="icon-link" href="/edit" title="Editor">Edit</a>
+        </div>
+    </header>
 
-<div id="topbar">
-    Mode:
-    <select id="modeSelect"></select>
+    <main class="layout">
+        <section class="panel status-panel">
+            <div class="panel-title">
+                <h2>Live Status</h2>
+                <span id="pollState" class="pill warn">Waiting</span>
+            </div>
+            <div id="statusGrid" class="metric-grid"></div>
+        </section>
 
-    <span id="status"></span>
-</div>
+        <section class="panel chart-panel">
+            <div class="panel-title">
+                <h2>Bus Rates</h2>
+                <div class="legend">
+                    <span><i class="tx"></i>TX ok</span>
+                    <span><i class="rx"></i>RX</span>
+                    <span><i class="drop"></i>Drops</span>
+                </div>
+            </div>
+            <canvas id="rateChart" width="900" height="260"></canvas>
+        </section>
 
-<!-- dynamic UI goes here -->
-<div id="app"></div>
+        <section class="panel mode-panel">
+            <div class="panel-title">
+                <h2 id="modeTitle">Mode</h2>
+                <span id="modeBadge" class="pill">Idle</span>
+            </div>
+            <div id="app"></div>
+        </section>
+    </main>
 
-<script src="main.js"></script>
+    <script type="module" src="main.js"></script>
 </body>
 </html>

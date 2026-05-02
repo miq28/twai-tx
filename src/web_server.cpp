@@ -275,11 +275,30 @@ void webPushFrame(const CANRxItem &item)
 // ===== STATUS JSON =====
 static String getStatusJson()
 {
+    uint16_t rxUsed = CANRxBuffer::getUsage();
+    uint16_t rxCap = CANRxBuffer::getCapacity();
+
     String s = "{";
     s += "\"mode\":" + String(appState.mode) + ",";
     s += "\"baud\":" + String(CANDriver::getCurrentBaud()) + ",";
     s += "\"running\":" + String(appState.running ? "true" : "false") + ",";
-    s += "\"listen\":" + String(CANDriver::isListenOnly() ? "true" : "false");
+    s += "\"targetFps\":" + String(appState.target_fps) + ",";
+    s += "\"delayUs\":" + String(appState.delay_us) + ",";
+    s += "\"lockedId\":" + String(appState.locked_id) + ",";
+    s += "\"extended\":" + String(canFrameCfg.extended ? "true" : "false") + ",";
+    s += "\"listen\":" + String(CANDriver::isListenOnly() ? "true" : "false") + ",";
+    s += "\"canState\":\"" + String(CANDriver::getStateStr()) + "\",";
+    s += "\"rxRate\":" + String(CANRxBuffer::getRateRx()) + ",";
+    s += "\"rxDropRate\":" + String(CANRxBuffer::getRateDrop()) + ",";
+    s += "\"rxUsage\":" + String(rxUsed) + ",";
+    s += "\"rxCapacity\":" + String(rxCap) + ",";
+    s += "\"rxMax\":" + String(CANRxBuffer::getMaxUsage()) + ",";
+    s += "\"txAttemptRate\":" + String(CANTxBuffer::getRateAttempt()) + ",";
+    s += "\"txOkRate\":" + String(CANTxBuffer::getRateOk()) + ",";
+    s += "\"txFailRate\":" + String(CANTxBuffer::getRateFail()) + ",";
+    s += "\"txDropRate\":" + String(CANTxBuffer::getRateDrop()) + ",";
+    s += "\"txBlockRate\":" + String(CANTxBuffer::getRateBlock()) + ",";
+    s += "\"tcpClient\":" + String(netClientConnected() ? "true" : "false");
     s += ",\"canlog\":" + String(settings.canLogMask);
     s += ",\"led\":" + String(settings.ledEnabled ? "true" : "false");
     s += "}";
@@ -367,7 +386,50 @@ void webInit()
         if (req->hasParam("m", true))
             appState.mode = (Mode)req->getParam("m", true)->value().toInt();
 
-        req->send(200, "text/plain", "OK"); });
+        req->send(200, "application/json", getStatusJson()); });
+
+    // ===== RUN STATE =====
+    server.on("/run", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+        if (req->hasParam("v", true))
+        {
+            String v = req->getParam("v", true)->value();
+            appState.running = (v == "1" || v == "true" || v == "on");
+        }
+
+        req->send(200, "application/json", getStatusJson()); });
+
+    // ===== GENERATOR =====
+    server.on("/generator", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+        if (req->hasParam("fps", true))
+        {
+            int fps = req->getParam("fps", true)->value().toInt();
+            if (fps < 0) fps = 0;
+            appState.target_fps = fps;
+            appState.delay_us = 0;
+        }
+
+        if (req->hasParam("delay", true))
+        {
+            int delay = req->getParam("delay", true)->value().toInt();
+            if (delay < 0) delay = 0;
+            appState.delay_us = delay;
+        }
+
+        if (req->hasParam("lock", true))
+        {
+            int locked = req->getParam("lock", true)->value().toInt();
+            appState.locked_id = (locked >= 0 && locked <= 9) ? locked : -1;
+        }
+
+        if (req->hasParam("ext", true))
+        {
+            String ext = req->getParam("ext", true)->value();
+            canFrameCfg.extended = (ext == "1" || ext == "true" || ext == "on");
+        }
+
+        req->send(200, "application/json", getStatusJson()); });
 
     // ===== BAUD =====
     server.on("/baud", HTTP_POST, [](AsyncWebServerRequest *req)
@@ -378,7 +440,19 @@ void webInit()
             setCANConfig(b, CANDriver::isListenOnly());
         }
 
-        req->send(200, "text/plain", "OK"); });
+        req->send(200, "application/json", getStatusJson()); });
+
+    // ===== LISTEN ONLY =====
+    server.on("/listen", HTTP_POST, [](AsyncWebServerRequest *req)
+              {
+        if (req->hasParam("v", true))
+        {
+            String v = req->getParam("v", true)->value();
+            bool listen = (v == "1" || v == "true" || v == "on");
+            setCANConfig(CANDriver::getCurrentBaud(), listen);
+        }
+
+        req->send(200, "application/json", getStatusJson()); });
 
     // ===== WS =====
     ws.onEvent(onWsEvent);
